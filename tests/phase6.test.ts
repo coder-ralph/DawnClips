@@ -76,3 +76,12 @@ test("schema-phase9 grants service_role table access and is part of schema.sql",
   assert.match(phase, /grant select, insert, update, delete on all tables in schema public to service_role/);
   assert.match(schema, /DawnClips Phase 9/);
 });
+
+test("middleware matcher lets Clerk's /__clerk proxy through and share assets exist", () => {
+  const proxy = readFileSync("proxy.ts", "utf8");
+  assert.match(proxy, /"\/__clerk\/\(\.\*\)"/);
+  const og = readFileSync("public/og.png");
+  assert.equal(og.readUInt32BE(16), 1200);
+  assert.equal(og.readUInt32BE(20), 630);
+  for (const file of ["app/favicon.ico", "app/icon.png", "app/apple-icon.png"]) assert.ok(readFileSync(file).length > 100, file);
+});

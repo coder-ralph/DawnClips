@@ -37,10 +37,18 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   if (result.status !== "ready" || !result.profile) {
     return { title: "Profile", robots: { index: false, follow: false } };
   }
+  const { displayName, username, bio } = result.profile;
+  const title = `${displayName} (@${username})`;
+  const description = bio || `${displayName} on ${siteConfig.name}: MLBB gameplay highlights.`;
+  const url = `${siteConfig.url}/profile/${username}`;
+  // The share image comes from opengraph-image.tsx / twitter-image.tsx in this folder: the profile picture
+  // on a branded card, or the plain DawnClips card when the profile has no picture.
   return {
-    title: result.profile.displayName,
-    description: result.profile.bio || `${result.profile.displayName} on DawnClips`,
-    alternates: { canonical: `${siteConfig.url}/profile/${result.profile.username}` },
+    title,
+    description,
+    alternates: { canonical: url },
+    openGraph: { type: "profile", username, title: `${title} · ${siteConfig.name}`, description, url, siteName: siteConfig.name },
+    twitter: { card: "summary_large_image", title: `${title} · ${siteConfig.name}`, description },
   };
 }
 
