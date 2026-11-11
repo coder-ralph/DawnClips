@@ -59,6 +59,11 @@ function mapPublicProfile(value: unknown): PublicProfile | null {
   };
 }
 
+/** Server-log line with the error code and message only (no row data), so a failing call can be diagnosed from the logs. */
+function logDbError(label: string, error: { code?: string | null; message?: string | null }) {
+  console.error(`${label} [${error.code ?? "no-code"}] ${error.message ?? ""}`);
+}
+
 export async function ensureCurrentProfile(): Promise<ProfileSyncResult> {
   const { isAuthenticated, userId } = await auth();
   if (!isAuthenticated || !userId) return { status: "signed_out" };
@@ -73,7 +78,7 @@ export async function ensureCurrentProfile(): Promise<ProfileSyncResult> {
     .maybeSingle();
 
   if (existing.error) {
-    console.error("Profile lookup failed");
+    logDbError("Profile lookup failed", existing.error);
     return { status: "error", message: safeErrorMessage(existing.error, "Could not load your profile.") };
   }
   if (existing.data) {
@@ -120,7 +125,7 @@ export async function ensureCurrentProfile(): Promise<ProfileSyncResult> {
       continue;
     }
 
-    console.error("Profile creation failed");
+    if (inserted.error) logDbError("Profile creation failed", inserted.error);
     return {
       status: "error",
       message: safeErrorMessage(inserted.error, "Could not create your profile."),
@@ -140,7 +145,7 @@ export async function getPublicProfile(lookup: string) {
 
   const { data, error } = await supabase.rpc("get_public_profile", { lookup });
   if (error) {
-    console.error("Public profile lookup failed");
+    logDbError("Public profile lookup failed", error);
     return {
       status: "error" as const,
       profile: null,

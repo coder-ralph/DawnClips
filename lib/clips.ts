@@ -96,7 +96,7 @@ export async function listFeed(feed: FeedName, cursor: FeedCursor | null) {
     page_limit: 8,
   });
   if (error) {
-    console.error("Feed query failed");
+    console.error(`Feed query failed [${error.code ?? "no-code"}] ${error.message ?? ""}`);
     return { status: "error" as const, clips: [] as FeedClip[], nextCursor: null };
   }
   const payload = data as { clips?: unknown; next_cursor?: Record<string, unknown> | null } | null;
