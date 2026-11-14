@@ -71,9 +71,9 @@ export async function ClipViewerContent({ id, mode }: { id: string; mode: "modal
 
 export function ClipViewerSkeleton() {
   return (
-    <div role="status" aria-label="Loading clip" className="fixed inset-0 z-50 flex flex-col bg-black lg:flex-row">
-      <div className="h-[40dvh] shrink-0 bg-black lg:h-auto lg:flex-1" />
-      <div className="flex-1 space-y-4 bg-background p-4 lg:w-[420px] lg:flex-none">
+    <div role="status" aria-label="Loading clip" className="fixed inset-0 z-50 flex flex-col bg-black landscape-short:flex-row lg:flex-row">
+      <div className="h-[40dvh] shrink-0 bg-black landscape-short:h-auto landscape-short:flex-1 lg:h-auto lg:flex-1" />
+      <div className="flex-1 space-y-4 bg-background p-4 landscape-short:w-[min(380px,42vw)] landscape-short:flex-none lg:w-[420px] lg:flex-none">
         <div className="flex items-center gap-3">
           <Skeleton className="h-10 w-10 rounded-full" />
           <Skeleton className="h-4 w-40" />

@@ -91,6 +91,17 @@ export function ClipCard({
     [clip.id, onSavedChange],
   );
 
+  const openViewer = useCallback(
+    (currentTime: number) => {
+      const timestamp = Number.isFinite(currentTime)
+        ? Math.max(0, currentTime)
+        : 0;
+
+      router.push(`/clip/${clip.id}?t=${encodeURIComponent(String(timestamp))}`);
+    },
+    [clip.id, router],
+  );
+
   const profileHref = `/profile/${clip.username}`;
   const applyEdit = (patch: ClipPatch) => setText(patch);
 
@@ -153,13 +164,17 @@ export function ClipCard({
             poster={clip.thumbnailUrl}
             controllerRef={controller}
             onPlay={() => onVisible(clip.id)}
-            onOpen={() => router.push(`/clip/${clip.id}`)}
+            onOpen={openViewer}
           />
         </div>
 
         <div className="col-span-2 mt-1.5 flex items-center sm:col-span-1 sm:col-start-2">
           <div className="-ml-2.5 flex items-center">
-            <LikeButton clipId={clip.id} liked={Boolean(clip.liked)} count={clip.likesCount} />
+            <LikeButton
+              clipId={clip.id}
+              liked={Boolean(clip.liked)}
+              count={clip.likesCount}
+            />
             <Link href={`/clip/${clip.id}#comments`} className="action-btn">
               <MessageCircle aria-hidden="true" className="h-[18px] w-[18px]" />
               <span className="sr-only">Comments</span>

@@ -40,3 +40,34 @@ export function useMutedPreference() {
   };
   return [muted, setMuted] as const;
 }
+
+/**
+ * Sound for this visit, shared by every player on the page.
+ * `on: null` means the visitor has not touched the speaker yet: feed clips start muted, and the viewer
+ * (opened with a click) starts with sound. Once the speaker is used, `on` is true or false and every
+ * clip that plays afterwards follows it, including the same clip when it is scrolled back into view.
+ * It lives in memory only, so a reload starts muted again.
+ */
+export type SessionSound = { on: boolean | null; volume: number };
+
+const serverSound: SessionSound = { on: null, volume: 1 };
+let sessionSound: SessionSound = serverSound;
+const soundListeners = new Set<() => void>();
+
+export const getSessionSound = () => sessionSound;
+
+export function setSessionSound(patch: Partial<SessionSound>) {
+  sessionSound = { ...sessionSound, ...patch };
+  for (const listener of soundListeners) listener();
+}
+
+function subscribeSound(listener: () => void) {
+  soundListeners.add(listener);
+  return () => {
+    soundListeners.delete(listener);
+  };
+}
+
+export function useSessionSound() {
+  return useSyncExternalStore(subscribeSound, getSessionSound, () => serverSound);
+}

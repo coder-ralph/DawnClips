@@ -2,7 +2,7 @@
 
 import { Loader2, Pause, Play, Volume1, Volume2, VolumeX } from "lucide-react";
 import { useEffect, useImperativeHandle, useRef, useState } from "react";
-import { useMutedPreference } from "@/lib/player-prefs";
+import { getSessionSound, setSessionSound, useMutedPreference } from "@/lib/player-prefs";
 import { formatDuration } from "@/lib/video";
 import { cn } from "@/lib/utils";
 
@@ -19,13 +19,13 @@ export const playbackRates = [1, 1.25, 1.5, 1.75, 2] as const;
  */
 const players = new Set<HTMLVideoElement>();
 
-/** Pauses and silences every mounted player (opening the viewer, following a link inside it). */
+/** Pauses every mounted player (opening the viewer, following a link inside it). Sound settings are left alone. */
 export function pauseAllPlayers() {
-  for (const video of players) {
-    video.pause();
-    video.muted = true;
-  }
+  for (const video of players) video.pause();
 }
+
+/** The element that currently owns the lock-screen / notification media controls. */
+let mediaOwner: HTMLVideoElement | null = null;
 
 /** The first frame is painted by loading the file at 0.001s, so a card never shows a black box. */
 const previewSource = (url: string) => `${url}#t=0.001`;
@@ -93,6 +93,7 @@ export function VideoPlayer({
   poster,
   onPlay,
   onOpen,
+  startAt = 0,
   controllerRef,
   variant = "inline",
 }: {
@@ -103,8 +104,10 @@ export function VideoPlayer({
   /** Public poster image from the clip row; shown before the playback URL is fetched. */
   poster?: string | null;
   onPlay?: () => void;
-  /** When set, clicking the picture opens the viewer instead of toggling playback. */
-  onOpen?: () => void;
+  /** When set, clicking the picture opens the viewer at the current playback position. */
+  onOpen?: (currentTime: number) => void;
+  /** Playback position to restore when this player is mounted in the viewer. */
+  startAt?: number;
   controllerRef?: React.Ref<PlayerController>;
   /** "viewer" fills its parent (media viewer); "inline" is a 16:9 card. */
   variant?: "inline" | "viewer";
@@ -113,18 +116,20 @@ export function VideoPlayer({
   const videoRef = useRef<HTMLVideoElement>(null);
   const hideTimer = useRef<number | undefined>(undefined);
   const counted = useRef(false);
-  const pendingSeek = useRef<number | null>(null);
+  const pendingSeek = useRef<number | null>(startAt > 0 ? startAt : null);
+  const volumeHover = useRef(false);
   const playStamp = useRef<number | null>(null);
   const watchedMs = useRef(0);
   const activeRef = useRef(active);
   const aliveRef = useRef(true);
+  const pausedWhileHidden = useRef(false);
   const [playback, setPlayback] = useState<Playback | null>(null);
   const [playing, setPlaying] = useState(false);
   // Only used when the visitor presses Play: the "start with sound" setting. Toggling the speaker never writes it.
   const [preferMuted] = useMutedPreference();
-  // Sound belongs to this one player. Every player starts muted and is muted again when it stops.
+  // Mirrors the element. Which clips start with sound is decided by the shared session setting (see play()).
   const [muted, setMutedState] = useState(true);
-  const [volume, setVolume] = useState(1);
+  const [volume, setVolume] = useState(() => getSessionSound().volume);
   const [rate, setRate] = useState<number>(1);
   const [menu, setMenu] = useState<"volume" | "speed" | null>(null);
   const [progress, setProgress] = useState(0);
@@ -146,27 +151,18 @@ export function VideoPlayer({
     navigator.sendBeacon(`/api/clips/${clipId}/watch`, new Blob([JSON.stringify({ seconds })], { type: "application/json" }));
   }
 
-  /** Pause and silence this player (scrolled away, replaced by another clip, tab hidden). */
-  function stopAndMute() {
-    const video = videoRef.current;
-    if (video) {
-      video.pause();
-      video.muted = true;
-    }
-    setMutedState(true);
+  /** Pauses this player (scrolled away). Sound is a session setting, so nothing is muted here. */
+  function pauseNow() {
+    videoRef.current?.pause();
     setMenu(null);
     flushWatch();
   }
 
-  // Losing the active spot stops and silences this player. The element's own events update the UI state.
+  // Losing the active spot pauses this player. The element's own events update the UI state.
   useEffect(() => {
     activeRef.current = active;
     if (!active) {
-      const video = videoRef.current;
-      if (video) {
-        video.pause();
-        video.muted = true;
-      }
+      videoRef.current?.pause();
       flushWatch();
     }
     // flushWatch only reads refs and the stable clip id.
@@ -195,7 +191,7 @@ export function VideoPlayer({
     };
   }, []);
 
-  // Leaving the screen stops the clip and its sound, even if the parent never reports it.
+  // Leaving the screen pauses the clip, even if the parent never reports it.
   useEffect(() => {
     const node = containerRef.current;
     if (!node || viewer || typeof IntersectionObserver === "undefined") return;
@@ -203,14 +199,14 @@ export function VideoPlayer({
       (entries) => {
         if (entries.some((entry) => entry.intersectionRatio < 0.2)) {
           const video = videoRef.current;
-          if (video && (!video.paused || !video.muted)) stopAndMute();
+          if (video && !video.paused) pauseNow();
         }
       },
       { threshold: [0, 0.2] },
     );
     observer.observe(node);
     return () => observer.disconnect();
-    // stopAndMute only touches refs, setState and the stable clip id.
+    // pauseNow only touches refs, setState and the stable clip id.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewer, clipId]);
 
@@ -235,21 +231,89 @@ export function VideoPlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsPreview, playback, clipId]);
 
+  // Switching tabs, windows or Chrome profiles: a clip playing with sound keeps playing in the background,
+  // like any media tab. A silent clip has nothing to listen to, so it pauses and resumes when the tab returns.
   useEffect(() => {
-    const onHide = () => {
-      if (document.visibilityState === "hidden") stopAndMute();
+    const onVisibility = () => {
+      const video = videoRef.current;
+      if (!video) return;
+      if (document.visibilityState === "hidden") {
+        if (!video.paused && video.muted) {
+          pausedWhileHidden.current = true;
+          video.pause();
+          flushWatch();
+        }
+      } else if (pausedWhileHidden.current) {
+        pausedWhileHidden.current = false;
+        if (activeRef.current && aliveRef.current) void video.play().catch(() => undefined);
+      }
     };
-    document.addEventListener("visibilitychange", onHide);
+    document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pagehide", flushWatch);
     return () => {
-      document.removeEventListener("visibilitychange", onHide);
+      document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("pagehide", flushWatch);
       window.clearTimeout(hideTimer.current);
       flushWatch();
     };
-    // stopAndMute and flushWatch only touch refs, setState and the stable clip id.
+    // flushWatch only touches refs and the stable clip id.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Lets the OS and the browser treat this as media: lock-screen and notification controls, and a
+  // tab that is not throttled like an idle page when it plays with sound.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!playing || !video || !("mediaSession" in navigator)) return;
+    const session = navigator.mediaSession;
+    mediaOwner = video;
+    try {
+      const art = playback?.poster ?? poster;
+      session.metadata = new MediaMetadata({
+        title,
+        artist: "DawnClips",
+        artwork: art ? [{ src: art, sizes: "640x360", type: "image/jpeg" }] : [],
+      });
+      session.playbackState = "playing";
+      session.setActionHandler("play", () => void video.play().catch(() => undefined));
+      session.setActionHandler("pause", () => video.pause());
+    } catch {
+      // Media Session is optional; playback works without it.
+    }
+    return () => {
+      if (mediaOwner !== video) return;
+      mediaOwner = null;
+      try {
+        session.playbackState = "paused";
+        session.setActionHandler("play", null);
+        session.setActionHandler("pause", null);
+      } catch {
+        // ignore
+      }
+    };
+  }, [playing, title, poster, playback?.poster]);
+
+  // The volume slider opens on hover over the speaker control. On touch devices,
+  // tapping the speaker opens it temporarily; hovering keeps it open.
+  useEffect(() => {
+    if (menu !== "volume") return;
+    const timer = window.setTimeout(() => {
+      if (!volumeHover.current) setMenu(null);
+    }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [menu, volume]);
+
+  // A viewer is mounted separately from the feed card. Preserve the requested
+  // timestamp and apply it as soon as metadata is available.
+  useEffect(() => {
+    if (!Number.isFinite(startAt) || startAt <= 0) return;
+    const video = videoRef.current;
+    pendingSeek.current = startAt;
+    if (video && video.readyState >= 1) {
+      video.currentTime = Math.min(startAt, video.duration || startAt);
+      pendingSeek.current = null;
+    }
+  }, [startAt]);
 
   // Close the speed / volume popover on an outside press or Escape.
   useEffect(() => {
@@ -313,15 +377,36 @@ export function VideoPlayer({
     if (!source || !video || !aliveRef.current) return;
     // Scrolled away while the playback URL was loading: stay paused.
     if (!fromGesture && !activeRef.current) return;
-    // Do not wait for React to render the new src before calling play().
+    // Set the source directly so playback does not wait for another React render.
     const wanted = previewSource(source.url);
     if (video.getAttribute("src") !== wanted) video.src = wanted;
-    video.playbackRate = rate;
-    if (fromGesture) {
-      if (!preferMuted && mayPlayWithSound()) video.muted = false;
-    } else {
-      video.muted = !(viewer && mayPlayWithSound());
+
+    // If this viewer was opened from a feed card, wait for metadata and seek
+    // before starting playback so it never flashes or plays from the beginning.
+    if (pendingSeek.current !== null) {
+      if (video.readyState < 1) {
+        await new Promise<void>((resolve) => {
+          const finish = () => resolve();
+          video.addEventListener("loadedmetadata", finish, { once: true });
+          video.addEventListener("error", finish, { once: true });
+        });
+      }
+      if (!aliveRef.current) return;
+      if (pendingSeek.current !== null && video.readyState >= 1) {
+        const target = pendingSeek.current;
+        video.currentTime = Math.min(target, video.duration || target);
+        pendingSeek.current = null;
+      }
     }
+
+    video.playbackRate = rate;
+    // Sound follows the speaker the visitor last chose, for every clip and every return to a clip.
+    // Before they have chosen: feed autoplay is muted, the viewer (opened with a click) has sound,
+    // and a manual play follows the "Start muted" setting.
+    const session = getSessionSound();
+    const wantsSound = session.on ?? (viewer || (fromGesture && !preferMuted));
+    video.volume = session.volume;
+    video.muted = !(wantsSound && mayPlayWithSound());
     try {
       await video.play();
     } catch {
@@ -355,17 +440,18 @@ export function VideoPlayer({
     else void play(true);
   }
 
-  /** Mutes or unmutes this video only. */
+  /** Mutes or unmutes. Only the sound changes: the volume slider is not opened. The choice sticks for the visit. */
   function toggleMute() {
     const video = videoRef.current;
     if (!video) return;
     const next = !video.muted;
+    let level = getSessionSound().volume;
+    if (!next && (level === 0 || video.volume === 0)) level = 1;
     video.muted = next;
-    if (!next && video.volume === 0) {
-      video.volume = 1;
-      setVolume(1);
-    }
+    video.volume = level;
+    setVolume(level);
     setMutedState(next);
+    setSessionSound({ on: !next, volume: level });
   }
 
   function changeVolume(next: number) {
@@ -376,6 +462,7 @@ export function VideoPlayer({
       video.muted = next === 0;
       setMutedState(next === 0);
     }
+    setSessionSound({ on: next > 0, volume: next });
   }
 
   function changeRate(next: number) {
@@ -384,10 +471,13 @@ export function VideoPlayer({
     setMenu(null);
   }
 
-  /** Clicking the picture opens the viewer when the card allows it; otherwise it plays and pauses. */
+  /** Clicking the picture opens the viewer at this timestamp, or toggles playback. */
   function onSurfaceClick() {
-    if (onOpen) onOpen();
-    else toggle();
+    if (onOpen) {
+      onOpen(videoRef.current?.currentTime ?? 0);
+      return;
+    }
+    toggle();
   }
 
   useImperativeHandle(controllerRef, () => ({
@@ -402,15 +492,13 @@ export function VideoPlayer({
       void play(true);
     },
     currentTime: () => videoRef.current?.currentTime ?? 0,
-    /** Pause, silence and rewind (used when the viewer is closed). */
+    /** Pause and rewind (used when the viewer is closed). */
     stop() {
       const video = videoRef.current;
       if (video) {
         video.pause();
-        video.muted = true;
         if (video.readyState >= 1) video.currentTime = 0;
       }
-      setMutedState(true);
       setProgress(0);
       setMenu(null);
       flushWatch();
@@ -447,6 +535,14 @@ export function VideoPlayer({
       case "m":
         toggleMute();
         break;
+      case "ArrowUp":
+      case "ArrowDown": {
+        event.preventDefault();
+        const base = muted ? 0 : volume;
+        changeVolume(Math.min(1, Math.max(0, Math.round((base + (event.key === "ArrowUp" ? 0.1 : -0.1)) * 100) / 100)));
+        setMenu("volume");
+        break;
+      }
       case "ArrowLeft":
         event.preventDefault();
         seekBy(-5);
@@ -469,7 +565,7 @@ export function VideoPlayer({
       ref={containerRef}
       role="group"
       aria-label={`Video: ${title}`}
-      aria-keyshortcuts="Space K M ArrowLeft ArrowRight"
+      aria-keyshortcuts="Space K M ArrowLeft ArrowRight ArrowUp ArrowDown"
       tabIndex={0}
       data-visible={showControls}
       onKeyDown={onKeyDown}
@@ -594,15 +690,17 @@ export function VideoPlayer({
             className="range min-w-0 flex-1"
           />
 
-          {/* Volume: the speaker toggles sound for this video; hover or focus shows the vertical slider. */}
+          {/* Volume: hover over the speaker to reveal the slider; tapping the speaker also opens it. */}
           <div
             data-popover
             className="relative"
-            onMouseEnter={() => setMenu("volume")}
-            onMouseLeave={() => setMenu((current) => (current === "volume" ? null : current))}
-            onFocus={() => setMenu("volume")}
-            onBlur={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget)) setMenu((current) => (current === "volume" ? null : current));
+            onMouseEnter={() => {
+              volumeHover.current = true;
+              setMenu("volume");
+            }}
+            onMouseLeave={() => {
+              volumeHover.current = false;
+              setMenu((current) => (current === "volume" ? null : current));
             }}
           >
             {menu === "volume" ? (
@@ -612,7 +710,13 @@ export function VideoPlayer({
                 </div>
               </div>
             ) : null}
-            <button type="button" aria-label={muted ? "Unmute" : "Mute"} aria-pressed={muted} onClick={toggleMute} className={iconButton}>
+            <button
+              type="button"
+              aria-label={muted ? "Unmute" : "Mute"}
+              aria-pressed={muted}
+              onClick={toggleMute}
+              className={iconButton}
+            >
               <VolumeIcon aria-hidden="true" className="h-5 w-5" />
             </button>
           </div>

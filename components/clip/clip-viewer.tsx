@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight, Lock, MessageCircle, Pin, X } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ClipPatch } from "@/components/clip/edit-clip-dialog";
 import { MomentsPanel } from "@/components/clip/moments-panel";
@@ -48,6 +48,13 @@ export function ClipViewer({
   related?: React.ReactNode;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedStartAt = Number(searchParams.get("t"));
+  const startAt =
+    Number.isFinite(requestedStartAt) && requestedStartAt > 0
+      ? requestedStartAt
+      : 0;
+
   const controller = useRef<PlayerController>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const [panelOpen, setPanelOpen] = useState(true);
@@ -94,8 +101,8 @@ export function ClipViewer({
   }, []);
 
   return (
-    <div role="dialog" aria-modal="true" aria-label={`${text.title} by ${clip.displayName}`} className="fixed inset-0 z-50 flex flex-col bg-black lg:flex-row">
-      <div className="relative h-[40dvh] min-h-0 shrink-0 bg-black lg:h-auto lg:flex-1">
+    <div role="dialog" aria-modal="true" aria-label={`${text.title} by ${clip.displayName}`} className="fixed inset-0 z-50 flex flex-col bg-black landscape-short:flex-row lg:flex-row">
+      <div className="relative h-[40dvh] min-h-0 shrink-0 bg-black landscape-short:h-auto landscape-short:min-w-0 landscape-short:flex-1 lg:h-auto lg:flex-1">
         <button ref={closeRef} type="button" onClick={close} aria-label="Close" className={cn(roundButton, "absolute left-3 top-3 z-10")}>
           <X aria-hidden="true" className="h-5 w-5" />
         </button>
@@ -104,7 +111,7 @@ export function ClipViewer({
           onClick={() => setPanelOpen((open) => !open)}
           aria-label={panelOpen ? "Hide details and comments" : "Show details and comments"}
           aria-expanded={panelOpen}
-          className={cn(roundButton, "absolute right-3 top-3 z-10 hidden lg:flex")}
+          className={cn(roundButton, "absolute right-3 top-3 z-10 hidden landscape-short:flex lg:flex")}
         >
           {panelOpen ? <ChevronRight aria-hidden="true" className="h-5 w-5" /> : <ChevronLeft aria-hidden="true" className="h-5 w-5" />}
         </button>
@@ -116,6 +123,7 @@ export function ClipViewer({
           poster={clip.thumbnailUrl}
           controllerRef={controller}
           variant="viewer"
+          startAt={startAt}
         />
       </div>
 
@@ -128,7 +136,10 @@ export function ClipViewer({
           if (link && href && !href.startsWith("#") && link.getAttribute("target") !== "_blank") controller.current?.stop();
         }}
         aria-label="Details and comments"
-        className={cn("min-h-0 flex-1 overflow-y-auto bg-background text-foreground lg:w-[420px] lg:flex-none lg:border-l", !panelOpen && "lg:hidden")}
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto bg-background text-foreground landscape-short:w-[min(380px,42vw)] landscape-short:flex-none landscape-short:border-l lg:w-[420px] lg:flex-none lg:border-l",
+          !panelOpen && "landscape-short:hidden lg:hidden",
+        )}
       >
         <div className="px-4 pt-4">
           <header className="flex items-center gap-3">
@@ -185,7 +196,11 @@ export function ClipViewer({
 
           <div className="mt-3 flex items-center border-b pb-2">
             <div className="-ml-2.5 flex items-center">
-              <LikeButton clipId={clip.id} liked={liked} count={clip.likesCount} />
+              <LikeButton
+                clipId={clip.id}
+                liked={liked}
+                count={clip.likesCount}
+              />
               <button type="button" onClick={() => document.getElementById("comments")?.scrollIntoView({ behavior: "smooth" })} className="action-btn">
                 <MessageCircle aria-hidden="true" className="h-[18px] w-[18px]" />
                 <span className="sr-only">Comments</span>

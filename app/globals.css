@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* A phone turned sideways: wide, but only a few hundred pixels tall. Used by the clip viewer so the video fills the screen. */
+@custom-variant landscape-short (@media (orientation: landscape) and (max-height: 500px));
+
 /*
  * DawnClips design tokens.
  * Dark is the default. Every text/background pair below was checked against

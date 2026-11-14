@@ -6,7 +6,7 @@ import { loadAvatarDataUri } from "@/lib/og/avatar";
 
 export const profileCardSize = { width: 1200, height: 630 };
 
-async function brandIcon() {
+export async function brandIcon() {
   try {
     const file = await readFile(path.join(process.cwd(), "app", "icon.png"));
     return `data:image/png;base64,${file.toString("base64")}`;
@@ -20,7 +20,7 @@ async function brandIcon() {
  * y 56-456, so the mark is drawn cropped to that area (and rounded) instead of shrinking the whole square,
  * which left the logo small and blurred into the card background.
  */
-function BrandMark({ src, size }: { src: string; size: number }) {
+export function BrandMark({ src, size }: { src: string; size: number }) {
   const crop = 400;
   const scale = size / crop;
   return (
@@ -34,7 +34,7 @@ function BrandMark({ src, size }: { src: string; size: number }) {
 const clipsGradient = ["#d946ef", "#e853d2", "#f061b2", "#f67b8f", "#fb923c"];
 
 /** "Dawn" in white and "Clips" fading from magenta to orange, like the logo wordmark (the renderer has no text gradients). */
-function Wordmark({ size }: { size: number }) {
+export function Wordmark({ size }: { size: number }) {
   return (
     <div style={{ display: "flex", fontSize: size, lineHeight: 1.1 }}>
       <span style={{ color: "#ffffff" }}>Dawn</span>
