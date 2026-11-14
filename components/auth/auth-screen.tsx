@@ -1,4 +1,5 @@
 import { SignIn, SignUp } from "@clerk/nextjs";
+import Link from "next/link";
 import { Suspense } from "react";
 import { Logo } from "@/components/ui/logo";
 import { siteConfig } from "@/config/site";
@@ -18,6 +19,11 @@ export function AuthScreen({ mode }: { mode: "sign-in" | "sign-up" }) {
       </Suspense>
       <p className="mt-6 max-w-md text-center text-xs leading-5 text-[var(--text-secondary)]">
         {siteConfig.disclaimer}
+      </p>
+      <p className="mt-3 flex items-center gap-3 text-xs text-[var(--text-secondary)]">
+        <Link href="/terms" className="underline underline-offset-2 hover:text-[var(--text)]">Terms</Link>
+        <Link href="/privacy" className="underline underline-offset-2 hover:text-[var(--text)]">Privacy</Link>
+        <Link href="/about" className="underline underline-offset-2 hover:text-[var(--text)]">About</Link>
       </p>
     </main>
   );

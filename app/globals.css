@@ -328,3 +328,178 @@
     background-image: none;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Landing and legal pages (route group "(marketing)")                  */
+/* ------------------------------------------------------------------ */
+@layer components {
+  /* Brand gradient from the DawnClips logo. Light mode uses darker stops so large text keeps 3:1 contrast. */
+  .brand-gradient-text {
+    --brand-1: #c084fc;
+    --brand-2: #f472b6;
+    --brand-3: #fbbf24;
+    background-image: linear-gradient(100deg, var(--brand-1), var(--brand-2) 55%, var(--brand-3));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  [data-theme="light"] .brand-gradient-text {
+    --brand-1: #7e22ce;
+    --brand-2: #be185d;
+    --brand-3: #b45309;
+  }
+
+  .marketing-glow {
+    background:
+      radial-gradient(60rem 28rem at 12% -8%, rgb(168 85 247 / 0.22), transparent 60%),
+      radial-gradient(48rem 26rem at 92% 4%, rgb(244 114 182 / 0.16), transparent 60%),
+      radial-gradient(40rem 22rem at 60% 100%, rgb(251 191 36 / 0.1), transparent 60%);
+  }
+
+  [data-theme="light"] .marketing-glow {
+    background:
+      radial-gradient(60rem 28rem at 12% -8%, rgb(168 85 247 / 0.12), transparent 60%),
+      radial-gradient(48rem 26rem at 92% 4%, rgb(244 114 182 / 0.1), transparent 60%),
+      radial-gradient(40rem 22rem at 60% 100%, rgb(251 191 36 / 0.1), transparent 60%);
+  }
+
+  .feature-card {
+    transition: transform 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+  }
+
+  .feature-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--border-strong);
+  }
+
+  .faq-item summary {
+    list-style: none;
+  }
+
+  .faq-item summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .faq-item[open] .faq-chevron {
+    transform: rotate(180deg);
+  }
+
+  /* Legal pages: readable long-form text without a typography plugin. */
+  .legal-prose {
+    color: var(--text-secondary);
+    line-height: 1.75;
+    font-size: 1rem;
+  }
+
+  .legal-prose h2 {
+    margin-top: 2.5rem;
+    margin-bottom: 0.75rem;
+    scroll-margin-top: 5rem;
+    font-size: 1.25rem;
+    line-height: 1.4;
+    font-weight: 650;
+    color: var(--text);
+  }
+
+  .legal-prose h3 {
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+    font-size: 1rem;
+    font-weight: 650;
+    color: var(--text);
+  }
+
+  .legal-prose p,
+  .legal-prose ul {
+    margin-top: 0.75rem;
+  }
+
+  .legal-prose ul {
+    list-style: disc;
+    padding-left: 1.25rem;
+  }
+
+  .legal-prose li + li {
+    margin-top: 0.4rem;
+  }
+
+  .legal-prose strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .legal-prose a {
+    color: var(--accent-text);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .legal-prose code {
+    border-radius: 0.375rem;
+    background: var(--card);
+    padding: 0.1rem 0.35rem;
+    font-size: 0.875em;
+    color: var(--text);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.marketing-root) {
+    scroll-behavior: smooth;
+  }
+
+  @keyframes marketing-fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(14px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes marketing-float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+
+  .fade-up {
+    animation: marketing-fade-up 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    animation-delay: var(--delay, 0ms);
+  }
+
+  .float-slow {
+    animation: marketing-float 6s ease-in-out infinite;
+    animation-delay: var(--delay, 0ms);
+  }
+
+  /*
+   * Scroll reveal where the browser supports scroll-driven animation; everywhere else content is simply visible.
+   * It never starts fully transparent, so content stays readable if a tool captures the page without scrolling it.
+   */
+  @keyframes marketing-reveal {
+    from {
+      opacity: 0.35;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @supports (animation-timeline: view()) {
+    .reveal {
+      animation: marketing-reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 40%;
+    }
+  }
+}

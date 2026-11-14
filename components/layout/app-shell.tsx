@@ -95,6 +95,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="mt-auto flex w-full flex-col items-center gap-3 xl:items-stretch">
             <AccountMenu variant="sidebar" />
             <p className="hidden px-3 text-[11px] leading-4 text-muted xl:block">{siteConfig.disclaimer}</p>
+            <p className="hidden items-center gap-3 px-3 text-[11px] text-muted xl:flex">
+              <Link href="/about" className="hover:text-foreground">About</Link>
+              <Link href="/privacy" className="hover:text-foreground">Privacy</Link>
+              <Link href="/terms" className="hover:text-foreground">Terms</Link>
+            </p>
           </div>
         </aside>
 

@@ -5,10 +5,10 @@ import { supabaseAnonKey, supabaseUrl } from "@/lib/supabase/env";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = siteConfig.url;
-  const staticRoutes: MetadataRoute.Sitemap = ["", "/explore"].map((path) => ({
-    url: `${base}${path || "/"}`,
-    changeFrequency: "daily",
-  }));
+  const staticRoutes: MetadataRoute.Sitemap = [
+    ...["", "/explore"].map((path) => ({ url: `${base}${path || "/"}`, changeFrequency: "daily" as const })),
+    ...["/about", "/privacy", "/terms"].map((path) => ({ url: `${base}${path}`, changeFrequency: "monthly" as const })),
+  ];
   const url = supabaseUrl();
   const key = supabaseAnonKey();
   const supabase = url && key ? createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } }) : null;
