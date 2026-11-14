@@ -1,4 +1,5 @@
 import "server-only";
+import { logDbError } from "@/lib/db-log";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export function socialError(error: { message?: string } | null) {
@@ -18,7 +19,7 @@ export async function callSocial<T>(name: string, args: Record<string, unknown>)
   const { data, error } = await supabase.rpc(name, args);
   if (error) {
     // Name, code and message only (no arguments), so a failing RPC can be diagnosed from the server log.
-    console.error(`Social action failed: ${name} [${error.code ?? "no-code"}] ${error.message ?? ""}`);
+    logDbError(`Social action failed: ${name}`, error);
     const mapped = socialError(error);
     return { ok: false as const, ...mapped };
   }

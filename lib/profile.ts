@@ -1,6 +1,7 @@
 import "server-only";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { generateUsername } from "@/lib/username";
+import { logDbError } from "@/lib/db-log";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { safeErrorMessage } from "@/lib/utils";
 import type { OwnProfile, ProfileRow, PublicProfile } from "@/types/database";
@@ -57,11 +58,6 @@ function mapPublicProfile(value: unknown): PublicProfile | null {
     followersCount: typeof row.followers_count === "number" ? row.followers_count : null,
     followingCount: typeof row.following_count === "number" ? row.following_count : null,
   };
-}
-
-/** Server-log line with the error code and message only (no row data), so a failing call can be diagnosed from the logs. */
-function logDbError(label: string, error: { code?: string | null; message?: string | null }) {
-  console.error(`${label} [${error.code ?? "no-code"}] ${error.message ?? ""}`);
 }
 
 export async function ensureCurrentProfile(): Promise<ProfileSyncResult> {

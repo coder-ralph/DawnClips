@@ -1,5 +1,6 @@
 import "server-only";
 import { auth } from "@clerk/nextjs/server";
+import { logDbError } from "@/lib/db-log";
 import { ensureCurrentProfile } from "@/lib/profile";
 import { callSocial } from "@/lib/social";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
@@ -96,7 +97,7 @@ export async function listFeed(feed: FeedName, cursor: FeedCursor | null) {
     page_limit: 8,
   });
   if (error) {
-    console.error(`Feed query failed [${error.code ?? "no-code"}] ${error.message ?? ""}`);
+    logDbError("Feed query failed", error);
     return { status: "error" as const, clips: [] as FeedClip[], nextCursor: null };
   }
   const payload = data as { clips?: unknown; next_cursor?: Record<string, unknown> | null } | null;
