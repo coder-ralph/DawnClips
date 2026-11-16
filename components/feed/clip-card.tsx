@@ -1,7 +1,7 @@
 "use client";
 
 import { MessageCircle, Pin } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MomentChips } from "@/components/clip/moment-chips";
@@ -13,6 +13,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { ShareButton } from "@/components/ui/share-button";
 import { VideoPlayer, type PlayerController } from "@/components/video/video-player";
 import { tagLabel } from "@/lib/heroes";
+import { getCachedPlayback, warmVideo } from "@/lib/playback-cache";
 import { formatCount, formatRelativeTime } from "@/lib/video";
 import type { FeedClip } from "@/types/clips";
 
@@ -91,15 +92,30 @@ export function ClipCard({
     [clip.id, onSavedChange],
   );
 
+  // Public clips carry their stable video URL, so the player starts without the playback API.
+  const videoSource = useMemo(
+    () => (clip.videoUrl ? { url: clip.videoUrl, expiresAt: null, poster: clip.thumbnailUrl } : null),
+    [clip.videoUrl, clip.thumbnailUrl],
+  );
+
+  // The card being watched is the one most likely to be opened: have the viewer route ready before the click.
+  useEffect(() => {
+    if (active) router.prefetch(`/clip/${clip.id}`);
+  }, [active, clip.id, router]);
+
   const openViewer = useCallback(
     (currentTime: number) => {
       const timestamp = Number.isFinite(currentTime)
         ? Math.max(0, currentTime)
         : 0;
 
+      // Start downloading now: the bytes arrive while the viewer page is still rendering on the server.
+      const warmUrl = clip.videoUrl ?? getCachedPlayback(clip.id)?.url;
+      if (warmUrl) warmVideo(warmUrl);
+
       router.push(`/clip/${clip.id}?t=${encodeURIComponent(String(timestamp))}`);
     },
-    [clip.id, router],
+    [clip.id, clip.videoUrl, router],
   );
 
   const profileHref = `/profile/${clip.username}`;
@@ -162,6 +178,7 @@ export function ClipCard({
             active={active}
             autoplay
             poster={clip.thumbnailUrl}
+            source={videoSource}
             controllerRef={controller}
             onPlay={() => onVisible(clip.id)}
             onOpen={openViewer}

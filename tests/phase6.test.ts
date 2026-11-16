@@ -35,8 +35,8 @@ test("moment timestamps parse mm:ss and reject junk", () => {
 });
 
 test("schema-phase6 is part of schema.sql and keeps existing RLS untouched", () => {
-  const phase = readFileSync("schema-phase6.sql", "utf8");
-  const schema = readFileSync("schema.sql", "utf8");
+  const phase = readFileSync("supabase/schema-phase6.sql", "utf8");
+  const schema = readFileSync("supabase/schema.sql", "utf8");
   for (const fn of ["edit_clip", "set_clip_pinned", "explore_search", "set_clip_moments", "clip_insights", "record_clip_watch"]) {
     assert.match(phase, new RegExp(`function public\\.${fn}\\b`));
     assert.match(schema, new RegExp(`function public\\.${fn}\\b`));
@@ -45,8 +45,8 @@ test("schema-phase6 is part of schema.sql and keeps existing RLS untouched", () 
 });
 
 test("schema-phase7 fixes the viewer_clip_flags alias clash and is part of schema.sql", () => {
-  const phase = readFileSync("schema-phase7.sql", "utf8");
-  const schema = readFileSync("schema.sql", "utf8");
+  const phase = readFileSync("supabase/schema-phase7.sql", "utf8");
+  const schema = readFileSync("supabase/schema.sql", "utf8");
   assert.match(phase, /unnest\(ids\[1:50\]\) as q\(cid\)/);
   assert.doesNotMatch(phase, /as id\b/);
   assert.match(schema, /Phase 7: fix viewer_clip_flags/);
@@ -63,16 +63,16 @@ test("custom tags are slugged, validated and labelled", () => {
 });
 
 test("schema-phase8 adds partial tag search and moments_for_clips", () => {
-  const phase = readFileSync("schema-phase8.sql", "utf8");
-  const schema = readFileSync("schema.sql", "utf8");
+  const phase = readFileSync("supabase/schema-phase8.sql", "utf8");
+  const schema = readFileSync("supabase/schema.sql", "utf8");
   assert.match(phase, /function public\.moments_for_clips/);
   assert.match(phase, /tag_needle/);
   assert.match(schema, /DawnClips Phase 8/);
 });
 
 test("schema-phase9 grants service_role table access and is part of schema.sql", () => {
-  const phase = readFileSync("schema-phase9.sql", "utf8");
-  const schema = readFileSync("schema.sql", "utf8");
+  const phase = readFileSync("supabase/schema-phase9.sql", "utf8");
+  const schema = readFileSync("supabase/schema.sql", "utf8");
   assert.match(phase, /grant select, insert, update, delete on all tables in schema public to service_role/);
   assert.match(schema, /DawnClips Phase 9/);
 });

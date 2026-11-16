@@ -2,11 +2,10 @@
 
 import { Loader2, Pause, Play, Volume1, Volume2, VolumeX } from "lucide-react";
 import { useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forgetPlayback, fetchPlayback, getCachedPlayback, rememberPlayback, type Playback } from "@/lib/playback-cache";
 import { getSessionSound, setSessionSound, useMutedPreference } from "@/lib/player-prefs";
 import { formatDuration } from "@/lib/video";
 import { cn } from "@/lib/utils";
-
-type Playback = { url: string; expiresAt: string | null; poster: string | null };
 
 /** Imperative handle for pages that jump to moments in the clip. */
 export type PlayerController = { seek: (seconds: number) => void; currentTime: () => number; stop: () => void };
@@ -91,6 +90,7 @@ export function VideoPlayer({
   active,
   autoplay,
   poster,
+  source,
   onPlay,
   onOpen,
   startAt = 0,
@@ -103,6 +103,11 @@ export function VideoPlayer({
   autoplay: boolean;
   /** Public poster image from the clip row; shown before the playback URL is fetched. */
   poster?: string | null;
+  /**
+   * Video URL the page already knows (a public clip's stable URL, or one signed while the page rendered).
+   * With it the player never waits for the playback API: the video starts loading as soon as the page does.
+   */
+  source?: Playback | null;
   onPlay?: () => void;
   /** When set, clicking the picture opens the viewer at the current playback position. */
   onOpen?: (currentTime: number) => void;
@@ -123,7 +128,22 @@ export function VideoPlayer({
   const activeRef = useRef(active);
   const aliveRef = useRef(true);
   const pausedWhileHidden = useRef(false);
-  const [playback, setPlayback] = useState<Playback | null>(null);
+  // A URL that failed once is re-requested from the API (signed at the exact current time) before giving up.
+  const retried = useRef(false);
+  const needFresh = useRef(false);
+  const [playback, setPlaybackState] = useState<Playback | null>(() => source ?? getCachedPlayback(clipId));
+  // Event handlers and async code read the latest URL here instead of from a stale render.
+  const playbackRef = useRef<Playback | null>(playback);
+  function setPlayback(next: Playback | null) {
+    playbackRef.current = next;
+    setPlaybackState(next);
+  }
+  // The src React renders is fixed at mount (the URL the page already knew, so the browser can start loading with
+  // the HTML). Every later change goes through attachSource(): React rewriting the attribute with the same value
+  // would restart the load and interrupt a play() that had just started.
+  const [initialSrc] = useState(() => (playback ? previewSource(playback.url) : undefined));
+  // True once the card is within a screen or so of the viewport: only then does its video start loading metadata.
+  const [near, setNear] = useState(false);
   const [playing, setPlaying] = useState(false);
   // Only used when the visitor presses Play: the "start with sound" setting. Toggling the speaker never writes it.
   const [preferMuted] = useMutedPreference();
@@ -181,6 +201,9 @@ export function VideoPlayer({
     aliveRef.current = true;
     if (!video) return;
     players.add(video);
+    // The cleanup below clears the src React rendered. React's development double-run of effects would then leave
+    // a card without its video URL, so put it back when this effect starts again.
+    if (playbackRef.current && !video.getAttribute("src")) video.setAttribute("src", previewSource(playbackRef.current.url));
     return () => {
       aliveRef.current = false;
       players.delete(video);
@@ -210,7 +233,29 @@ export function VideoPlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewer, clipId]);
 
-  // No poster image? Fetch the playback URL shortly before the card scrolls into view so the
+  // Share what the page already knows with the rest of the tab: the viewer opened from this card reuses it.
+  useEffect(() => {
+    if (source) rememberPlayback(clipId, source);
+  }, [clipId, source]);
+
+  // Cards start loading their video metadata a little before they scroll into view, never all at once on mount.
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node || near || viewer) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          observer.disconnect();
+          setNear(true);
+        }
+      },
+      { rootMargin: "600px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [near, viewer]);
+
+  // No poster image and no URL yet? Fetch the playback URL shortly before the card scrolls into view so the
   // first video frame can act as the preview.
   const needsPreview = !(playback?.poster ?? poster);
   useEffect(() => {
@@ -343,22 +388,28 @@ export function VideoPlayer({
     hideTimer.current = window.setTimeout(() => setRecent(false), 2500);
   }
 
+  /** Points the element at a playback URL, once. Nothing happens if it already has it. */
+  function attachSource(next: Playback) {
+    const video = videoRef.current;
+    const wanted = previewSource(next.url);
+    if (video && video.getAttribute("src") !== wanted) video.src = wanted;
+  }
+
   async function loadSource(force = false) {
-    if (playback && !force) return playback;
+    if (playbackRef.current && !force) return playbackRef.current;
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(`/api/clips/${clipId}/playback`);
-      if (!response.ok) {
-        setError("This video cannot be played.");
+      // One shared request per clip: a card and the viewer opened from it never ask twice.
+      const result = await fetchPlayback(clipId, force || needFresh.current);
+      needFresh.current = false;
+      if ("error" in result) {
+        setError(result.error === "network" ? "Could not reach the video. Check your connection." : "This video cannot be played.");
         return null;
       }
-      const next = (await response.json()) as Playback;
-      setPlayback(next);
-      return next;
-    } catch {
-      setError("Could not reach the video. Check your connection.");
-      return null;
+      setPlayback(result.playback);
+      attachSource(result.playback);
+      return result.playback;
     } finally {
       setLoading(false);
     }
@@ -378,8 +429,7 @@ export function VideoPlayer({
     // Scrolled away while the playback URL was loading: stay paused.
     if (!fromGesture && !activeRef.current) return;
     // Set the source directly so playback does not wait for another React render.
-    const wanted = previewSource(source.url);
-    if (video.getAttribute("src") !== wanted) video.src = wanted;
+    attachSource(source);
 
     // If this viewer was opened from a feed card, wait for metadata and seek
     // before starting playback so it never flashes or plays from the beginning.
@@ -578,10 +628,10 @@ export function VideoPlayer({
           ref={videoRef}
           className={cn("h-full w-full object-contain", onOpen && "cursor-pointer")}
           poster={playback?.poster ?? poster ?? undefined}
-          src={playback ? previewSource(playback.url) : undefined}
+          src={initialSrc}
           playsInline
           muted
-          preload={playback ? "metadata" : "none"}
+          preload={playback ? (viewer || active ? "auto" : near ? "metadata" : "none") : "none"}
           aria-label={title}
           onClick={onSurfaceClick}
           onPlay={(event) => {
@@ -619,9 +669,15 @@ export function VideoPlayer({
           }}
           onDurationChange={() => setDuration(videoRef.current?.duration || 0)}
           onError={() => {
-            if (playback?.expiresAt && new Date(playback.expiresAt).getTime() < Date.now()) {
-              setPlayback(null);
-              void loadSource(true);
+            const expired = Boolean(playback?.expiresAt && new Date(playback.expiresAt).getTime() < Date.now());
+            if (expired || !retried.current) {
+              // An expired URL, or a derived one that did not work: ask the API once for a fresh URL and carry on.
+              if (!expired) retried.current = true;
+              needFresh.current = true;
+              forgetPlayback(clipId);
+              playbackRef.current = null;
+              if (activeRef.current && autoplay) void play(false);
+              else void loadSource();
               return;
             }
             setError("The video failed to load.");

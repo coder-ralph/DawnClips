@@ -1,5 +1,6 @@
 import "server-only";
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { cache } from "react";
 import { generateUsername } from "@/lib/username";
 import { logDbError } from "@/lib/db-log";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -60,7 +61,12 @@ function mapPublicProfile(value: unknown): PublicProfile | null {
   };
 }
 
-export async function ensureCurrentProfile(): Promise<ProfileSyncResult> {
+/**
+ * Wrapped in React.cache: during one page render the clip lookup, the shell and the feed hydration all ask for the
+ * viewer's profile, and each used to repeat the Clerk check and the profile query. Route handlers and server
+ * actions are not memoised, so a write is always followed by a fresh read there.
+ */
+export const ensureCurrentProfile = cache(async function ensureCurrentProfile(): Promise<ProfileSyncResult> {
   const { isAuthenticated, userId } = await auth();
   if (!isAuthenticated || !userId) return { status: "signed_out" };
 
@@ -129,7 +135,7 @@ export async function ensureCurrentProfile(): Promise<ProfileSyncResult> {
   }
 
   return { status: "error", message: "Could not create a unique username. Try again." };
-}
+});
 
 export async function getOwnProfile(): Promise<ProfileSyncResult> {
   return ensureCurrentProfile();

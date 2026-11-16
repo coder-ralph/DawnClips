@@ -1,8 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-import { createPlaybackUrl, publicObjectUrl, r2Configured } from "@/lib/r2";
+import { buildClipPlayback } from "@/lib/clip-playback";
+import { r2Configured } from "@/lib/r2";
 
-export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) return Response.json({ error: "Clip not found." }, { status: 404 });
   if (!r2Configured()) return Response.json({ error: "Video storage is not configured." }, { status: 503 });
@@ -22,17 +23,10 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     return Response.json({ error: "This clip is not ready." }, { status: 409 });
   }
 
-  const poster = clip.thumbnail_key
-    ? clip.visibility === "public"
-      ? publicObjectUrl(clip.thumbnail_key)
-      : (await createPlaybackUrl(clip.thumbnail_key)).url
-    : null;
-
-  if (clip.visibility === "public") {
-    const stable = publicObjectUrl(clip.object_key);
-    if (stable) return Response.json({ url: stable, expiresAt: null, poster });
-  }
-
-  const playback = await createPlaybackUrl(clip.object_key);
-  return Response.json({ url: playback.url, expiresAt: playback.expiresAt, poster });
+  // `?fresh=1` is sent by the player after a URL failed: it signs at the exact current time.
+  const fresh = new URL(request.url).searchParams.get("fresh") === "1";
+  const playback = await buildClipPlayback(clip, { fresh });
+  if (!playback) return Response.json({ error: "This clip is not ready." }, { status: 409 });
+  // Per viewer and short-lived, so a clip that is made private or deleted stops being served quickly.
+  return Response.json(playback, { headers: { "cache-control": fresh ? "no-store" : "private, max-age=60" } });
 }

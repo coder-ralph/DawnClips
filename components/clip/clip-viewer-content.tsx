@@ -4,7 +4,7 @@ import { ClipViewer } from "@/components/clip/clip-viewer";
 import { ClipRow } from "@/components/feed/clip-tile";
 import { CommentSection } from "@/components/social/comment-section";
 import { Skeleton } from "@/components/ui/skeleton";
-import { listMoments, loadClip, relatedClips } from "@/lib/clips";
+import { listMoments, loadClip, loadClipPlayback, relatedClips } from "@/lib/clips";
 import { getShellData } from "@/lib/shell-data";
 import { callSocial } from "@/lib/social";
 
@@ -30,17 +30,18 @@ async function RelatedClips({ id }: { id: string }) {
 
 /** Loads one clip and renders the media viewer. Shared by /clip/[id] and the intercepted modal route. */
 export async function ClipViewerContent({ id, mode }: { id: string; mode: "modal" | "page" }) {
-  const clip = await loadClip(id);
+  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
+  // Independent lookups run together. The authorisation row, the viewer's profile and the signed video URLs are
+  // memoised per request, so the page metadata and these calls share one database round trip.
+  const [clip, shell, moments, playback] = await Promise.all([loadClip(id), getShellData(), listMoments(id), loadClipPlayback(id)]);
   if (!clip) notFound();
-  const shell = await getShellData();
   // These two functions are granted to signed-in users only, so signed-out visitors skip them.
   const signedIn = Boolean(shell.viewer);
-  const [flags, relationship, moments] = await Promise.all([
+  const [flags, relationship] = await Promise.all([
     signedIn
       ? callSocial<Record<string, { liked?: boolean; bookmarked?: boolean; following?: boolean }>>("viewer_clip_flags", { ids: [id] })
       : Promise.resolve(null),
     signedIn && !clip.isOwn ? callSocial<{ blocked?: boolean }>("profile_relationship", { target: clip.userId }) : Promise.resolve(null),
-    listMoments(id),
   ]);
   const viewer = shell.viewer
     ? { username: shell.viewer.username, displayName: shell.viewer.displayName, avatarUrl: shell.viewer.avatarUrl }
@@ -57,6 +58,7 @@ export async function ClipViewerContent({ id, mode }: { id: string; mode: "modal
       blocked={Boolean(relationship?.ok && relationship.data?.blocked)}
       moments={moments}
       mode={mode}
+      playback={playback}
       comments={<CommentSection clipId={clip.id} initialCount={clip.commentsCount} viewer={viewer} />}
       related={
         clip.visibility === "public" ? (
@@ -69,18 +71,4 @@ export async function ClipViewerContent({ id, mode }: { id: string; mode: "modal
   );
 }
 
-export function ClipViewerSkeleton() {
-  return (
-    <div role="status" aria-label="Loading clip" className="fixed inset-0 z-50 flex flex-col bg-black landscape-short:flex-row lg:flex-row">
-      <div className="h-[40dvh] shrink-0 bg-black landscape-short:h-auto landscape-short:flex-1 lg:h-auto lg:flex-1" />
-      <div className="flex-1 space-y-4 bg-background p-4 landscape-short:w-[min(380px,42vw)] landscape-short:flex-none lg:w-[420px] lg:flex-none">
-        <div className="flex items-center gap-3">
-          <Skeleton className="h-10 w-10 rounded-full" />
-          <Skeleton className="h-4 w-40" />
-        </div>
-        <Skeleton className="h-6 w-2/3" />
-        <Skeleton className="h-16 w-full" />
-      </div>
-    </div>
-  );
-}
+export { ClipViewerSkeleton } from "@/components/clip/clip-viewer-skeleton";

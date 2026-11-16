@@ -13,7 +13,14 @@ async function Embed({ params }: { params: Promise<{ id: string }> }) {
   return (
     <div className="relative flex h-dvh w-full flex-col bg-black">
       <div className="flex min-h-0 flex-1 items-center">
-        <VideoPlayer clipId={clip.id} title={clip.title} active autoplay={false} poster={clip.thumbnailUrl} />
+        <VideoPlayer
+          clipId={clip.id}
+          title={clip.title}
+          active
+          autoplay={false}
+          poster={clip.thumbnailUrl}
+          source={clip.videoUrl ? { url: clip.videoUrl, expiresAt: null, poster: clip.thumbnailUrl } : null}
+        />
       </div>
       <a
         href={`/clip/${clip.id}`}

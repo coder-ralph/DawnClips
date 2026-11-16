@@ -1,10 +1,14 @@
 import "server-only";
 import { auth } from "@clerk/nextjs/server";
+import { cache } from "react";
+import { buildClipPlayback, type AuthorizedClipRow, type ClipPlayback } from "@/lib/clip-playback";
 import { logDbError } from "@/lib/db-log";
 import { ensureCurrentProfile } from "@/lib/profile";
+import { publicObjectUrl, r2Configured } from "@/lib/r2";
 import { callSocial } from "@/lib/social";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { clipObjectKey } from "@/lib/video";
 import type { ClipDetail, ClipMoment, FeedClip, FeedCursor, FeedName } from "@/types/clips";
 
 export function encodeCursor(cursor: FeedCursor) {
@@ -30,6 +34,8 @@ export function decodeCursor(value: string | undefined): FeedCursor | null {
 
 function mapFeedClip(row: Record<string, unknown>): FeedClip | null {
   if (typeof row.id !== "string" || typeof row.title !== "string") return null;
+  const visibility = row.visibility === "private" || row.visibility === "unlisted" ? row.visibility : "public";
+  const userId = String(row.user_id ?? "");
   return {
     id: row.id,
     title: row.title,
@@ -41,7 +47,10 @@ function mapFeedClip(row: Record<string, unknown>): FeedClip | null {
     likesCount: Number(row.likes_count ?? 0),
     commentsCount: Number(row.comments_count ?? 0),
     createdAt: String(row.created_at ?? ""),
-    userId: String(row.user_id ?? ""),
+    userId,
+    // Public clips have a stable public URL derived from the owner and clip ids (the key the uploader wrote), so
+    // a card can start loading the video without asking the playback API. Others still go through the API.
+    videoUrl: visibility === "public" && userId ? publicObjectUrl(clipObjectKey(userId, row.id, "mp4")) : null,
     username: String(row.username ?? ""),
     displayName: String(row.display_name ?? ""),
     avatarUrl: typeof row.avatar_url === "string" ? row.avatar_url : null,
@@ -49,7 +58,7 @@ function mapFeedClip(row: Record<string, unknown>): FeedClip | null {
     editedAt: typeof row.edited_at === "string" ? row.edited_at : null,
     editableUntil: typeof row.editable_until === "string" ? row.editable_until : null,
     pinnedAt: typeof row.pinned_at === "string" ? row.pinned_at : null,
-    visibility: row.visibility === "private" || row.visibility === "unlisted" ? row.visibility : "public",
+    visibility,
     commentsMode: row.comments_mode === "followers" || row.comments_mode === "disabled" ? row.comments_mode : "everyone",
   };
 }
@@ -113,7 +122,11 @@ export async function listFeed(feed: FeedName, cursor: FeedCursor | null) {
   return { status: "ready" as const, clips, nextCursor };
 }
 
-export async function loadClip(id: string): Promise<ClipDetail | null> {
+/**
+ * Runs the playback authorisation once per request. The page metadata, the viewer, the playback URLs and the share
+ * image all need this row, and each used to repeat the Clerk check and the database call.
+ */
+const authorizeClip = cache(async (id: string): Promise<Record<string, unknown> | null> => {
   const admin = createAdminSupabaseClient();
   if (!admin) return null;
   const { userId } = await auth();
@@ -123,7 +136,25 @@ export async function loadClip(id: string): Promise<ClipDetail | null> {
   });
   if (error || !data || typeof data !== "object") return null;
   const row = data as Record<string, unknown>;
-  if (row.status !== "published") return null;
+  return row.status === "published" ? row : null;
+});
+
+/** Playback URLs for a clip the current viewer may watch, built from the same authorisation as `loadClip`. */
+export const loadClipPlayback = cache(async (id: string): Promise<ClipPlayback | null> => {
+  if (!r2Configured()) return null;
+  const row = await authorizeClip(id);
+  if (!row) return null;
+  try {
+    return await buildClipPlayback(row as AuthorizedClipRow);
+  } catch {
+    // The player falls back to the playback API, which reports the real error.
+    return null;
+  }
+});
+
+export const loadClip = cache(async (id: string): Promise<ClipDetail | null> => {
+  const row = await authorizeClip(id);
+  if (!row) return null;
   const clip = mapFeedClip(row);
   if (!clip) return null;
   const profile = await ensureCurrentProfile();
@@ -134,7 +165,7 @@ export async function loadClip(id: string): Promise<ClipDetail | null> {
     isOwn: profile.status === "ready" && profile.profile.id === clip.userId,
     commentsMode: row.comments_mode === "followers" || row.comments_mode === "disabled" ? row.comments_mode : "everyone",
   };
-}
+});
 
 export async function relatedClips(id: string) {
   const supabase = createServerSupabaseClient();
@@ -242,5 +273,5 @@ export async function loadEmbedClip(id: string) {
   const row = data as Record<string, unknown>;
   if (row.status !== "published" || row.visibility !== "public") return null;
   const clip = mapFeedClip(row);
-  return clip ? { id: clip.id, title: clip.title, username: clip.username, displayName: clip.displayName, thumbnailUrl: clip.thumbnailUrl } : null;
+  return clip ? { id: clip.id, title: clip.title, username: clip.username, displayName: clip.displayName, thumbnailUrl: clip.thumbnailUrl, videoUrl: clip.videoUrl ?? null } : null;
 }

@@ -19,8 +19,11 @@ export function r2Configured() {
   );
 }
 
+let sharedClient: S3Client | null = null;
+
+/** One client per server instance: building it (credentials, endpoint, middleware stack) on every request is wasted work. */
 function client() {
-  return new S3Client({
+  sharedClient ??= new S3Client({
     region: "auto",
     endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
     credentials: {
@@ -30,6 +33,7 @@ function client() {
     // R2 expects path-style URLs (https://<account>.r2.cloudflarestorage.com/<bucket>/<key>).
     forcePathStyle: true,
   });
+  return sharedClient;
 }
 
 function bucket() {
@@ -62,14 +66,26 @@ export async function createUploadUrl(key: string, contentType: string, contentL
   return { url, headers: { "Content-Type": contentType } };
 }
 
-export async function createPlaybackUrl(key: string) {
+/**
+ * A short-lived signed GET URL for a private or unlisted object.
+ *
+ * The signing time is rounded down to a bucket (a sixth of the TTL, at most 10 minutes), so every request in
+ * the same bucket gets the identical URL. That lets the browser reuse bytes it already downloaded (feed card to
+ * viewer) and lets the player reuse a URL it already holds. The expiry is still signing time + TTL, so a URL
+ * is never valid for longer than the configured TTL. `fresh` signs at the exact current time instead; the player
+ * asks for that after a URL fails.
+ */
+export async function createPlaybackUrl(key: string, options: { fresh?: boolean } = {}) {
   const expiresIn = ttl("CLIP_PLAYBACK_URL_TTL_SECONDS", 3600, 43_200);
+  const now = Date.now();
+  const bucketMs = options.fresh ? 0 : Math.min(600, Math.floor(expiresIn / 6)) * 1000;
+  const signedAt = bucketMs > 0 ? Math.floor(now / bucketMs) * bucketMs : now;
   const url = await getSignedUrl(
     client(),
     new GetObjectCommand({ Bucket: bucket(), Key: key }),
-    { expiresIn },
+    { expiresIn, signingDate: new Date(signedAt) },
   );
-  return { url, expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString() };
+  return { url, expiresAt: new Date(signedAt + expiresIn * 1000).toISOString() };
 }
 
 export async function statObject(key: string) {

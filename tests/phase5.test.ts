@@ -26,7 +26,7 @@ test("report text cannot keep markup", () => {
 });
 
 test("the public index does not select private profile fields", () => {
-  const schema = readFileSync(new URL("../schema.sql", import.meta.url), "utf8");
+  const schema = readFileSync(new URL("../supabase/schema.sql", import.meta.url), "utf8");
   const start = schema.indexOf("function public.public_index");
   const fn = schema.slice(start, schema.indexOf("revoke all on function public.public_index"));
   assert.equal(fn.includes("email"), false);

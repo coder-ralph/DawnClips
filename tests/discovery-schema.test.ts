@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const schema = readFileSync(new URL("../schema.sql", import.meta.url), "utf8");
+const schema = readFileSync(new URL("../supabase/schema.sql", import.meta.url), "utf8");
 
 test("explore and profile tabs enforce privacy inside the database", () => {
   assert.match(schema, /function public\.search_explore/);

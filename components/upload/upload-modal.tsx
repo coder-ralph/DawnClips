@@ -11,6 +11,7 @@ import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { HeroCombobox } from "@/components/upload/hero-combobox";
 import { CLIP_TEXT_MAX, splitClipText } from "@/lib/clip-text";
+import { optimizeForStreaming } from "@/lib/mp4-faststart";
 import { CLIP_PUBLISHED_EVENT, OPEN_UPLOAD_EVENT } from "@/lib/ui-events";
 import { cn } from "@/lib/utils";
 import { isMp4Signature, maxClipBytes } from "@/lib/video";
@@ -201,6 +202,9 @@ export function UploadModal({
     setProgress(0);
     let startedId = "";
     try {
+      // Moves the MP4 index to the front so playback can start without fetching the end of the file first.
+      // Same size and same media bytes; if the file cannot be reordered safely it is uploaded as it is.
+      const upload = await optimizeForStreaming(file);
       const initiated = await fetch("/api/clips/upload/initiate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -209,7 +213,7 @@ export function UploadModal({
           description: split.description,
           heroTags: heroes,
           visibility,
-          fileSize: file.size,
+          fileSize: upload.size,
           mimeType: "video/mp4",
           fileName: file.name,
           posterSize: poster?.size,
@@ -219,7 +223,7 @@ export function UploadModal({
       if (!initiated.ok || !body.clipId || !body.uploadUrl || !body.headers) throw new Error(body.error ?? "Could not start the upload.");
       startedId = body.clipId;
       setClipId(body.clipId);
-      await uploadBlob(body.uploadUrl, file, body.headers, setProgress);
+      await uploadBlob(body.uploadUrl, upload, body.headers, setProgress);
       if (poster && body.posterUploadUrl && body.posterHeaders) {
         await uploadBlob(body.posterUploadUrl, poster, body.posterHeaders);
       }

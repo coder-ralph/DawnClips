@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const schema = readFileSync(new URL("../schema.sql", import.meta.url), "utf8").replace(/--.*$/gm, "");
+const schema = readFileSync(new URL("../supabase/schema.sql", import.meta.url), "utf8").replace(/--.*$/gm, "");
 
 test("social mutations are atomic functions, not client counter writes", () => {
   assert.match(schema, /function public\.set_like\(target uuid, should_like boolean\)/);

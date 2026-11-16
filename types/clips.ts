@@ -8,6 +8,8 @@ export type FeedClip = {
   heroTags: string[];
   duration: number | null;
   thumbnailUrl: string | null;
+  /** Stable public video URL for public clips, so a card can start loading without the playback API. */
+  videoUrl?: string | null;
   viewsCount: number;
   likesCount: number;
   commentsCount: number;

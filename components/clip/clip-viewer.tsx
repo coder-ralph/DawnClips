@@ -14,6 +14,7 @@ import { LikeButton } from "@/components/social/like-button";
 import { Avatar } from "@/components/ui/avatar";
 import { ShareButton } from "@/components/ui/share-button";
 import { VideoPlayer, pauseAllPlayers, type PlayerController } from "@/components/video/video-player";
+import type { Playback } from "@/lib/playback-cache";
 import { cn } from "@/lib/utils";
 import { formatCount, formatRelativeTime } from "@/lib/video";
 import type { ClipDetail, ClipMoment } from "@/types/clips";
@@ -34,6 +35,7 @@ export function ClipViewer({
   blocked,
   moments,
   mode,
+  playback,
   comments,
   related,
 }: {
@@ -44,6 +46,8 @@ export function ClipViewer({
   blocked: boolean;
   moments: ClipMoment[];
   mode: "modal" | "page";
+  /** Video URLs resolved on the server while the page rendered, so the video starts loading with the page. */
+  playback?: Playback | null;
   comments: React.ReactNode;
   related?: React.ReactNode;
 }) {
@@ -121,6 +125,7 @@ export function ClipViewer({
           active
           autoplay={clip.visibility === "public" || clip.isOwn}
           poster={clip.thumbnailUrl}
+          source={playback}
           controllerRef={controller}
           variant="viewer"
           startAt={startAt}
