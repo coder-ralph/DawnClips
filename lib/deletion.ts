@@ -3,6 +3,7 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { canEraseRecords, remainingObjectKeys } from "@/lib/deletion-plan";
 import { deleteObjects, r2Configured } from "@/lib/r2";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
+import { isOwnedObjectKey, splitClipKeys } from "@/lib/video";
 
 type Job = {
   id: string;
@@ -42,9 +43,16 @@ export async function deleteAccount(clerkUserId: string) {
     job = created.data as Job;
   }
 
-  const clips = await admin.from("clips").select("r2_object_key, thumbnail_object_key").eq("user_id", profile.data.id);
-  const foundKeys = (clips.data ?? []).flatMap((clip) => [clip.r2_object_key, clip.thumbnail_object_key]).filter((key): key is string => Boolean(key));
-  const keys = [...new Set([...(job.r2_object_keys ?? []), ...foundKeys])];
+  const clips = await admin.from("clips").select("id, r2_object_key, thumbnail_object_key").eq("user_id", profile.data.id);
+  // Only objects that belong to this account's clips are deleted. A stored key that points at another user's object
+  // is ignored (and logged) so it can neither delete that object nor block this deletion.
+  const profileId = profile.data.id;
+  const foundKeys = (clips.data ?? []).flatMap((clip) => {
+    const { own, foreign } = splitClipKeys({ id: clip.id, ownerId: profileId }, [clip.r2_object_key, clip.thumbnail_object_key]);
+    if (foreign.length > 0) console.error(`Account deletion: ignored ${foreign.length} stored object key(s) of clip ${clip.id} that do not belong to it.`);
+    return own;
+  });
+  const keys = [...new Set([...(job.r2_object_keys ?? []), ...foundKeys])].filter((key) => isOwnedObjectKey(key, profileId));
   await admin.from("account_deletions").update({
     status: "deleting_objects",
     r2_object_keys: keys,
@@ -61,7 +69,7 @@ export async function deleteAccount(clerkUserId: string) {
     return { ok: false as const, error: "Video storage is not configured. The account was not deleted.", retryable: true };
   }
 
-  const removed = pending.length > 0 ? await deleteObjects(pending) : { deleted: [], failed: [] };
+  const removed = pending.length > 0 ? await deleteObjects(pending, profile.data.id) : { deleted: [], failed: [] };
   const actuallyDeleted = [...new Set([...(job.r2_deleted_keys ?? []), ...removed.deleted])];
   const failed = removed.failed;
   if (!canEraseRecords(failed)) {

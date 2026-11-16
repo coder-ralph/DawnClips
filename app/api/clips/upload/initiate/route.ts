@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import { auth } from "@clerk/nextjs/server";
 import { ensureCurrentProfile } from "@/lib/profile";
 import { createUploadUrl, deleteObject, r2Configured } from "@/lib/r2";
+import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { uploadInitiateSchema } from "@/lib/validations/clip";
-import { clipObjectKey } from "@/lib/video";
+import { clipObjectKey, splitClipKeys } from "@/lib/video";
 
 export async function POST(request: Request) {
   const { isAuthenticated } = await auth();
@@ -22,6 +23,10 @@ export async function POST(request: Request) {
 
   const supabase = createServerSupabaseClient();
   if (!supabase) return Response.json({ error: "Supabase is not configured." }, { status: 503 });
+  // Clip rows are written with the service role: signed-in users cannot insert or change storage keys, status,
+  // size or type themselves (supabase/schema-phase10.sql). Every write below is scoped to the verified owner.
+  const admin = createAdminSupabaseClient();
+  if (!admin) return Response.json({ error: "Database is not configured." }, { status: 503 });
 
   const allowed = await supabase.rpc("consume_rate_limit", {
     action: "clip_upload",
@@ -40,9 +45,9 @@ export async function POST(request: Request) {
     .in("status", ["pending", "processing"])
     .lt("created_at", cutoff);
   for (const clip of stale.data ?? []) {
-    if (clip.r2_object_key) await deleteObject(clip.r2_object_key);
-    if (clip.thumbnail_object_key) await deleteObject(clip.thumbnail_object_key);
-    await supabase.from("clips").update({ status: "failed" }).eq("id", clip.id).eq("user_id", profile.profile.id);
+    const { own } = splitClipKeys({ id: clip.id, ownerId: profile.profile.id }, [clip.r2_object_key, clip.thumbnail_object_key]);
+    for (const key of own) await deleteObject(key, profile.profile.id);
+    await admin.from("clips").update({ status: "failed" }).eq("id", clip.id).eq("user_id", profile.profile.id);
   }
 
   const pending = await supabase
@@ -68,7 +73,7 @@ export async function POST(request: Request) {
   const objectKey = clipObjectKey(profile.profile.id, clipId, "mp4");
   const posterKey = parsed.data.posterSize ? clipObjectKey(profile.profile.id, clipId, "jpg") : null;
   const input = parsed.data;
-  const inserted = await supabase.from("clips").insert({
+  const inserted = await admin.from("clips").insert({
     id: clipId,
     user_id: profile.profile.id,
     title: input.title,

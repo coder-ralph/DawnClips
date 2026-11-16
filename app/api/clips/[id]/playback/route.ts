@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-import { buildClipPlayback } from "@/lib/clip-playback";
+import { buildClipPlayback, type AuthorizedClipRow } from "@/lib/clip-playback";
 import { r2Configured } from "@/lib/r2";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -18,7 +18,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   });
   if (error || !data || typeof data !== "object") return Response.json({ error: "Clip not found." }, { status: 404 });
 
-  const clip = data as { object_key?: string; visibility?: string; status?: string; thumbnail_key?: string | null };
+  const clip = data as AuthorizedClipRow;
   if (clip.status !== "published" || !clip.object_key) {
     return Response.json({ error: "This clip is not ready." }, { status: 409 });
   }

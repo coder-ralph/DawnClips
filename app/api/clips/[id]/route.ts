@@ -6,6 +6,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { callSocial } from "@/lib/social";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { clipEditSchema } from "@/lib/validations/clip";
+import { clipStorageKeys, splitClipKeys } from "@/lib/video";
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   const { isAuthenticated } = await auth();
@@ -59,10 +60,15 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
   const owns = profile.status === "ready" && profile.profile.id === clip.data.user_id;
   if (!owns && !isModerator(userId)) return Response.json({ error: "Forbidden" }, { status: 403 });
 
-  const keys = [clip.data.r2_object_key, clip.data.thumbnail_object_key].filter((key): key is string => Boolean(key));
+  // Only objects that belong to this clip (derived from its owner and id) are ever deleted. A stored key that points
+  // anywhere else is ignored and logged; the clip's own objects are removed instead so nothing is left behind.
+  const stored = splitClipKeys({ id: clip.data.id, ownerId: clip.data.user_id }, [clip.data.r2_object_key, clip.data.thumbnail_object_key]);
+  const derived = clipStorageKeys(clip.data.user_id, clip.data.id);
+  if (stored.foreign.length > 0) console.error(`Clip delete ${id}: ignored ${stored.foreign.length} stored object key(s) that do not belong to the clip.`);
+  const keys = stored.foreign.length > 0 && derived ? [derived.video, derived.poster] : stored.own;
   if (keys.length > 0 && !r2Configured()) return Response.json({ error: "Video storage is not configured." }, { status: 503 });
   for (const key of keys) {
-    const removed = await deleteObject(key);
+    const removed = await deleteObject(key, clip.data.user_id);
     if (!removed.ok) return Response.json({ error: "The video could not be deleted. The clip was kept." }, { status: 502 });
   }
   // Delete the row. Likes, comments, bookmarks, views, moments and watch events go with it (on delete cascade).

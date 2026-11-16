@@ -6,6 +6,11 @@ export function isMp4Signature(bytes: Uint8Array) {
   return String.fromCharCode(bytes[4], bytes[5], bytes[6], bytes[7]) === "ftyp";
 }
 
+/** True when the key has the generated `clips/<profile>/<clip>.mp4|jpg` shape. It says nothing about who owns it. */
+export function hasClipObjectKeyShape(key: string) {
+  return objectKeyPattern.test(key);
+}
+
 export function isOwnedObjectKey(key: string, profileId: string) {
   const match = objectKeyPattern.exec(key);
   return Boolean(match && match[1] === profileId);
@@ -13,6 +18,46 @@ export function isOwnedObjectKey(key: string, profileId: string) {
 
 export function clipObjectKey(profileId: string, clipId: string, ext: "mp4" | "jpg") {
   return `clips/${profileId}/${clipId}.${ext}`;
+}
+
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * The only object keys a clip may use, derived from the clip's owner (profile id) and its own id.
+ * Stored keys are never trusted on their own: they must equal these before they are signed, served or deleted.
+ */
+export function clipStorageKeys(ownerId: unknown, clipId: unknown) {
+  if (typeof ownerId !== "string" || typeof clipId !== "string") return null;
+  if (!uuidPattern.test(ownerId) || !uuidPattern.test(clipId)) return null;
+  return { video: clipObjectKey(ownerId, clipId, "mp4"), poster: clipObjectKey(ownerId, clipId, "jpg") };
+}
+
+/**
+ * Checks the stored keys of a clip against the keys derived from its owner and id.
+ * `video` is null when the stored video key is missing or is not the clip's own key, and the clip must not be served.
+ * A stored poster key that is not the clip's own is dropped (`posterRejected`) instead of being signed.
+ */
+export function resolveClipKeys(clip: { id: unknown; ownerId: unknown; videoKey: unknown; posterKey?: unknown }) {
+  const derived = clipStorageKeys(clip.ownerId, clip.id);
+  const video = derived && clip.videoKey === derived.video ? derived.video : null;
+  const hasPoster = typeof clip.posterKey === "string" && clip.posterKey.length > 0;
+  const poster = derived && hasPoster && clip.posterKey === derived.poster ? derived.poster : null;
+  return { video, poster, videoRejected: video === null, posterRejected: hasPoster && poster === null };
+}
+
+/**
+ * Splits keys read from a clip row into the ones that belong to that clip (to act on) and the rest (never to touch).
+ */
+export function splitClipKeys(clip: { id: unknown; ownerId: unknown }, keys: Array<string | null | undefined>) {
+  const derived = clipStorageKeys(clip.ownerId, clip.id);
+  const own: string[] = [];
+  const foreign: string[] = [];
+  for (const key of keys) {
+    if (!key) continue;
+    if (derived && (key === derived.video || key === derived.poster)) own.push(key);
+    else foreign.push(key);
+  }
+  return { own, foreign };
 }
 
 export function maxClipBytes() {
