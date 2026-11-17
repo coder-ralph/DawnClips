@@ -48,9 +48,18 @@ export function usernameError(value: string) {
   return null;
 }
 
+const suffixAlphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+
+/** Always exactly `length` characters (Math.random().toString(36) can return fewer), from the platform's secure RNG. */
+function randomSuffix(length: number) {
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => suffixAlphabet[byte % suffixAlphabet.length]).join("");
+}
+
 export function generateUsername(displayName: string) {
   const base = displayName.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 12) || "player";
-  const suffix = Math.random().toString(36).slice(2, 6);
+  const suffix = randomSuffix(5);
   const username = `${base}${suffix}`.slice(0, 20);
   return usernameError(username) ? `player${suffix}` : username;
 }

@@ -12,9 +12,9 @@ export function AuthScreen({ mode }: { mode: "sign-in" | "sign-up" }) {
       </div>
       <Suspense fallback={<div className="h-[520px] w-full max-w-[400px] rounded-2xl bg-[var(--card)]" />}>
         {mode === "sign-in" ? (
-          <SignIn path="/sign-in" routing="path" signUpUrl="/sign-up" fallbackRedirectUrl="/" />
+          <SignIn path="/sign-in" routing="path" signUpUrl="/sign-up" fallbackRedirectUrl="/" signUpFallbackRedirectUrl="/profile" />
         ) : (
-          <SignUp path="/sign-up" routing="path" signInUrl="/sign-in" fallbackRedirectUrl="/" />
+          <SignUp path="/sign-up" routing="path" signInUrl="/sign-in" fallbackRedirectUrl="/profile" />
         )}
       </Suspense>
       <p className="mt-6 max-w-md text-center text-xs leading-5 text-[var(--text-secondary)]">

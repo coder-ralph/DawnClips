@@ -1,8 +1,11 @@
 import "server-only";
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
 import { cache } from "react";
 import { generateUsername } from "@/lib/username";
 import { logDbError } from "@/lib/db-log";
+import { provisionProfile } from "@/lib/profile-provision";
+import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { safeErrorMessage } from "@/lib/utils";
 import type { OwnProfile, ProfileRow, PublicProfile } from "@/types/database";
@@ -62,6 +65,21 @@ function mapPublicProfile(value: unknown): PublicProfile | null {
 }
 
 /**
+ * The signed-in person's Clerk user, or null when there is none. A deleted account is the one case that matters: its
+ * session cookie stays valid for up to a minute, so a request can still arrive as that user after Clerk has removed
+ * it, and Clerk answers the lookup with a 404. That is "signed out", not a server error. Any other failure (Clerk
+ * unreachable, rate limited) is rethrown so it is never mistaken for a missing account.
+ */
+export const currentClerkUser = cache(async function currentClerkUser() {
+  try {
+    return await currentUser();
+  } catch (error) {
+    if (isClerkAPIResponseError(error) && error.status === 404) return null;
+    throw error;
+  }
+});
+
+/**
  * Wrapped in React.cache: during one page render the clip lookup, the shell and the feed hydration all ask for the
  * viewer's profile, and each used to repeat the Clerk check and the profile query. Route handlers and server
  * actions are not memoised, so a write is always followed by a fresh read there.
@@ -91,50 +109,57 @@ export const ensureCurrentProfile = cache(async function ensureCurrentProfile():
     return { status: "ready", profile };
   }
 
-  const user = await currentUser();
-  const displayName = (user?.fullName || user?.firstName || "Player").slice(0, 40);
-  const email = user?.primaryEmailAddress?.emailAddress ?? null;
-  const emailVerified = user?.primaryEmailAddress?.verification?.status === "verified";
-
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const inserted = await supabase
-      .from("profiles")
-      .insert({
-        clerk_user_id: userId,
-        email,
-        email_verified: emailVerified,
-        display_name: displayName,
-        username: generateUsername(displayName),
-        avatar_url: user?.imageUrl ?? null,
-        avatar_source: "clerk",
-        country: "PH",
-        language: "en",
-      })
-      .select(ownProfileColumns)
-      .single();
-
-    if (!inserted.error && inserted.data) {
-      return { status: "ready", profile: mapOwnProfile(inserted.data) };
-    }
-
-    if (inserted.error?.code === "23505") {
-      const again = await supabase
-        .from("profiles")
-        .select(ownProfileColumns)
-        .eq("clerk_user_id", userId)
-        .maybeSingle();
-      if (again.data) return { status: "ready", profile: mapOwnProfile(again.data) };
-      continue;
-    }
-
-    if (inserted.error) logDbError("Profile creation failed", inserted.error);
-    return {
-      status: "error",
-      message: safeErrorMessage(inserted.error, "Could not create your profile."),
-    };
+  let user: Awaited<ReturnType<typeof currentClerkUser>>;
+  try {
+    user = await currentClerkUser();
+  } catch (error) {
+    console.error(`Clerk user lookup failed [${isClerkAPIResponseError(error) ? error.status : "no-status"}]`);
+    return { status: "error", message: "Could not load your account. Try again." };
   }
+  // No Clerk user behind the session (the account was deleted): there is nothing to create a profile for.
+  if (!user) return { status: "signed_out" };
 
-  return { status: "error", message: "Could not create a unique username. Try again." };
+  const displayName = (user.fullName || user.firstName || "Player").slice(0, 40);
+  const email = user.primaryEmailAddress?.emailAddress ?? null;
+  const emailVerified = user.primaryEmailAddress?.verification?.status === "verified";
+  const admin = createAdminSupabaseClient();
+
+  const result = await provisionProfile<ProfileRow>({
+    nextUsername: () => generateUsername(displayName),
+    insert: async (username) => {
+      const inserted = await supabase
+        .from("profiles")
+        .insert({
+          clerk_user_id: userId,
+          email,
+          email_verified: emailVerified,
+          display_name: displayName,
+          username,
+          avatar_url: user.imageUrl ?? null,
+          avatar_source: "clerk",
+          country: "PH",
+          language: "en",
+        })
+        .select(ownProfileColumns)
+        .single();
+      return { data: inserted.data, error: inserted.error };
+    },
+    readOwn: async () => (await supabase.from("profiles").select(ownProfileColumns).eq("clerk_user_id", userId).maybeSingle()).data,
+    // Same account only: the id comes from the verified session, never from the request.
+    readAny: async () =>
+      admin ? (await admin.from("profiles").select(ownProfileColumns).eq("clerk_user_id", userId).maybeSingle()).data : null,
+  });
+
+  if (result.status === "ready") {
+    const profile = mapOwnProfile(result.row);
+    return profile.deletionStatus === "active" ? { status: "ready", profile } : { status: "pending_deletion", profile };
+  }
+  if (result.status === "username_taken") {
+    return { status: "error", message: "Could not create a unique username. Try again." };
+  }
+  // Code and constraint name only, so a failing sign-up can be diagnosed from the server log.
+  logDbError(result.status === "unreadable" ? "Profile exists but could not be read" : "Profile creation failed", result.error);
+  return { status: "error", message: safeErrorMessage(result.error, "Could not create your profile.") };
 });
 
 export async function getOwnProfile(): Promise<ProfileSyncResult> {

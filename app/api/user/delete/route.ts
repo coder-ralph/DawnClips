@@ -1,4 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
+import { cookies } from "next/headers";
+import { issueReceipt, receiptCookie, receiptMaxAgeSeconds } from "@/lib/deletion-receipt";
 import { confirmedDeletion } from "@/lib/deletion-plan";
 import { deleteAccount } from "@/lib/deletion";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -17,5 +19,17 @@ export async function DELETE(request: Request) {
 
   const result = await deleteAccount(userId);
   if (!result.ok) return Response.json({ error: result.error, retryable: result.retryable }, { status: result.retryable ? 409 : 500 });
+
+  // Only now, after the deletion finished, is the confirmation page allowed to show (see lib/deletion-receipt.ts).
+  const secret = process.env.CLERK_SECRET_KEY;
+  if (secret) {
+    (await cookies()).set(receiptCookie, await issueReceipt(secret), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: receiptMaxAgeSeconds,
+    });
+  }
   return Response.json({ ok: true, warning: "warning" in result ? result.warning : null });
 }

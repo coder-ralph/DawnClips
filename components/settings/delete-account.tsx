@@ -14,18 +14,31 @@ export function DeleteAccount() {
   async function remove() {
     setPending(true);
     setError("");
-    const response = await fetch("/api/user/delete", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ confirmation }),
-    });
+    let response: Response;
+    try {
+      response = await fetch("/api/user/delete", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmation }),
+      });
+    } catch {
+      setPending(false);
+      setError("Could not reach the server. Check your connection and try again.");
+      return;
+    }
     const body = (await response.json().catch(() => null)) as { error?: string; ok?: boolean } | null;
     if (!response.ok || !body?.ok) {
       setPending(false);
       setError(body?.error ?? "Deletion did not finish.");
       return;
     }
-    await signOut({ redirectUrl: "/" });
+    // The sign-in account no longer exists, so ending its session can fail on Clerk's side. The account is gone
+    // either way: leave through a full page load to the confirmation page instead of showing an error.
+    try {
+      await signOut({ redirectUrl: "/account-deleted" });
+    } catch {
+      window.location.href = new URL("/account-deleted", window.location.origin).href;
+    }
   }
 
   return (

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import { PublicProfileSection } from "@/components/settings/public-profile-section";
 import { SecuritySection } from "@/components/settings/security-section";
 import { Suspense } from "react";
@@ -10,7 +11,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageContainer, PageHeader } from "@/components/ui/page-container";
 import { siteConfig } from "@/config/site";
 import { normalizeLanguage } from "@/lib/i18n";
-import { ensureCurrentProfile } from "@/lib/profile";
+import { currentClerkUser, ensureCurrentProfile } from "@/lib/profile";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
@@ -20,7 +21,11 @@ export const metadata: Metadata = {
 
 async function SettingsContent() {
   await auth.protect();
-  const [sync, user] = await Promise.all([ensureCurrentProfile(), currentUser()]);
+  // currentClerkUser is null for a deleted account and shares one Clerk lookup with ensureCurrentProfile.
+  const [sync, user] = await Promise.all([ensureCurrentProfile(), currentClerkUser().catch(() => null)]);
+  // The session outlived the account (it was just deleted): there is no settings page for it. The confirmation page
+  // shows itself only when a deletion just succeeded in this browser, and otherwise sends the person home.
+  if (sync.status === "signed_out") redirect("/account-deleted");
 
   return (
     <>
