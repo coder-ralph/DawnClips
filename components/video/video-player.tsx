@@ -2,6 +2,7 @@
 
 import { Loader2, Pause, Play, Volume1, Volume2, VolumeX } from "lucide-react";
 import { useEffect, useImperativeHandle, useRef, useState } from "react";
+import { audioLabel, playLabel } from "@/lib/a11y-labels";
 import { forgetPlayback, fetchPlayback, getCachedPlayback, rememberPlayback, type Playback } from "@/lib/playback-cache";
 import { getSessionSound, setSessionSound, useMutedPreference } from "@/lib/player-prefs";
 import { formatDuration } from "@/lib/video";
@@ -52,7 +53,7 @@ function VerticalVolume({ value, onChange }: { value: number; onChange: (next: n
       ref={track}
       role="slider"
       tabIndex={0}
-      aria-label="Volume"
+      aria-label="Adjust volume"
       aria-orientation="vertical"
       aria-valuemin={0}
       aria-valuemax={100}
@@ -609,6 +610,7 @@ export function VideoPlayer({
   const iconButton =
     "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white hover:bg-white/15 focus-visible:outline-white";
   const VolumeIcon = muted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
+  const soundLabel = audioLabel({ muted, volume, playing });
 
   return (
     <div
@@ -632,7 +634,6 @@ export function VideoPlayer({
           playsInline
           muted
           preload={playback ? (viewer || active ? "auto" : near ? "metadata" : "none") : "none"}
-          aria-label={title}
           onClick={onSurfaceClick}
           onPlay={(event) => {
             for (const other of players) {
@@ -688,7 +689,8 @@ export function VideoPlayer({
           <button
             type="button"
             onClick={() => void play(true)}
-            aria-label={loading ? "Loading video" : `Play ${title}`}
+            aria-label={loading ? "Loading video" : "Play video"}
+            title={loading ? "Loading video" : "Play video"}
             className="absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-transform hover:scale-105 focus-visible:outline-white"
           >
             {loading ? <Loader2 aria-hidden="true" className="h-6 w-6 animate-spin" /> : <Play aria-hidden="true" className="ml-0.5 h-6 w-6" fill="currentColor" />}
@@ -722,7 +724,7 @@ export function VideoPlayer({
             showControls ? "opacity-100" : "opacity-0",
           )}
         >
-          <button type="button" aria-label={playing ? "Pause" : "Play"} onClick={toggle} className={iconButton}>
+          <button type="button" aria-label={playLabel(playing)} title={playLabel(playing)} onClick={toggle} className={iconButton}>
             {playing ? <Pause aria-hidden="true" className="h-5 w-5" fill="currentColor" /> : <Play aria-hidden="true" className="h-5 w-5" fill="currentColor" />}
           </button>
           <span className="w-[4.5rem] shrink-0 text-xs tabular-nums" aria-hidden="true">
@@ -768,8 +770,8 @@ export function VideoPlayer({
             ) : null}
             <button
               type="button"
-              aria-label={muted ? "Unmute" : "Mute"}
-              aria-pressed={muted}
+              aria-label={soundLabel}
+              title={soundLabel}
               onClick={toggleMute}
               className={iconButton}
             >
@@ -801,6 +803,7 @@ export function VideoPlayer({
             <button
               type="button"
               aria-label={`Playback speed ${rateLabel(rate)}`}
+              title={`Playback speed ${rateLabel(rate)}`}
               aria-haspopup="true"
               aria-expanded={menu === "speed"}
               onClick={() => setMenu((current) => (current === "speed" ? null : "speed"))}

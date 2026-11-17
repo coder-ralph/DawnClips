@@ -5,6 +5,7 @@ import { Flag, MessageCircle, Pencil, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ReportDialog } from "@/components/feed/report-clip";
+import { CommentComposer } from "@/components/social/comment-composer";
 import { Avatar } from "@/components/ui/avatar";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -12,6 +13,7 @@ import { inputClass } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { apiErrorMessage } from "@/lib/api-client";
+import { removeSubtree, restoreComments, subtreeIds, visibleComments } from "@/lib/comment-tree";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/video";
 
@@ -57,13 +59,15 @@ export function CommentSection({
   const [pending, setPending] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const tempCounter = useRef(0);
+  // Comments whose deletion request is still running, so a second click cannot send a second request.
+  const deleteInFlight = useRef(new Set<string>());
 
   useEffect(() => {
     let active = true;
     void fetch(`/api/clips/${clipId}/comments`)
       .then((response) => response.json())
       .then((body: { comments?: Comment[] }) => {
-        if (active) setComments(body.comments ?? []);
+        if (active) setComments(visibleComments(body.comments ?? []));
       })
       .catch(() => {
         if (active) setLoadError(true);
@@ -143,28 +147,51 @@ export function CommentSection({
   }
 
   async function remove(id: string) {
-    const previous = comments;
-    const previousCount = count;
     setDeleting(null);
-    setComments((current) => current.filter((item) => item.id !== id));
-    setCount((value) => Math.max(0, value - 1));
-    const response = await fetch(`/api/comments/${id}`, { method: "DELETE" }).catch(() => null);
-    if (!response?.ok) {
-      setComments(previous);
-      setCount(previousCount);
-      toast("Could not delete the comment.", "error");
-      return;
+    if (deleteInFlight.current.has(id)) return;
+    // The comment and every reply beneath it go together (the database deletes them in one step).
+    const { removed } = removeSubtree(comments, id);
+    if (removed.length === 0) return;
+    const ids = removed.map((item) => item.id);
+    for (const removedId of ids) deleteInFlight.current.add(removedId);
+
+    setComments((current) => removeSubtree(current, id).remaining);
+    setCount((value) => Math.max(0, value - removed.length));
+    if (editing && ids.includes(editing)) setEditing(null);
+    if (replyTo && ids.includes(replyTo)) {
+      setReplyTo(null);
+      setReplyText("");
     }
-    const body = (await response.json()) as { comments_count?: number };
-    if (typeof body.comments_count === "number") setCount(body.comments_count);
+
+    try {
+      const response = await fetch(`/api/comments/${id}`, { method: "DELETE" }).catch(() => null);
+      if (!response?.ok) {
+        // Put back exactly what was removed, then say why. If the comment is already gone or is not the viewer's,
+        // reload the list so it matches the server.
+        setComments((current) => restoreComments(current, removed));
+        setCount((value) => value + removed.length);
+        toast(response ? await apiErrorMessage(response, "Could not delete the comment.") : "Could not delete the comment. Check your connection.", "error");
+        if (response && (response.status === 403 || response.status === 404)) setReloadKey((value) => value + 1);
+        return;
+      }
+      const body = (await response.json().catch(() => ({}))) as { comments_count?: number; removed_ids?: string[] };
+      if (Array.isArray(body.removed_ids)) {
+        const gone = new Set(body.removed_ids);
+        setComments((current) => current.filter((item) => !gone.has(item.id)));
+      }
+      if (typeof body.comments_count === "number") setCount(body.comments_count);
+    } finally {
+      for (const removedId of ids) deleteInFlight.current.delete(removedId);
+    }
   }
 
+  const deletingReplies = deleting ? Math.max(0, subtreeIds(comments, deleting).size - 1) : 0;
   const repliesOf = (parentId: string) => comments.filter((item) => item.parent_id === parentId);
   const roots = comments.filter((item) => !item.parent_id);
 
   function renderComment(comment: Comment, depth: number) {
     const replies = depth < MAX_DEPTH ? repliesOf(comment.id) : [];
-    const canAct = !comment.deleted && !comment.id.startsWith("temp-");
+    const canAct = !comment.id.startsWith("temp-");
     return (
       <li key={comment.id}>
         <div className={cn("flex gap-3", depth === 0 ? "px-4 py-3 md:px-5" : "pt-3")}>
@@ -195,13 +222,11 @@ export function CommentSection({
                 </div>
               </form>
             ) : (
-              <p className={cn("mt-0.5 whitespace-pre-wrap break-words text-[15px] leading-6", comment.deleted && "italic text-muted")}>
-                {comment.deleted ? "Comment deleted." : comment.content}
-              </p>
+              <p className="mt-0.5 whitespace-pre-wrap break-words text-[15px] leading-6">{comment.content}</p>
             )}
             {canAct && editing !== comment.id ? (
               <div className="-ml-2 mt-0.5 flex flex-wrap items-center text-xs">
-                {isSignedIn ? (
+                {isSignedIn && depth < MAX_DEPTH ? (
                   <button type="button" onClick={() => { setReplyTo(replyTo === comment.id ? null : comment.id); setReplyText(""); }} className="action-btn">
                     <MessageCircle aria-hidden="true" className="h-4 w-4" /> Reply
                   </button>
@@ -223,22 +248,21 @@ export function CommentSection({
               </div>
             ) : null}
             {replyTo === comment.id ? (
-              <form action={() => void submit(comment.id, replyText)} className="mt-2 space-y-2">
-                <textarea
-                  value={replyText}
-                  onChange={(event) => setReplyText(event.target.value)}
-                  maxLength={MAX_LENGTH}
-                  rows={2}
-                  autoFocus
+              <div className="mt-2">
+                <CommentComposer
+                  id={`reply-${comment.id}`}
+                  label={`Reply to ${comment.display_name}`}
                   placeholder={`Reply to ${comment.display_name}…`}
-                  aria-label={`Reply to ${comment.display_name}`}
-                  className={cn(inputClass, "resize-none")}
+                  value={replyText}
+                  onChange={setReplyText}
+                  onSubmit={() => void submit(comment.id, replyText)}
+                  pending={pending}
+                  maxLength={MAX_LENGTH}
+                  submitLabel="Post reply"
+                  autoFocus
+                  onCancel={() => setReplyTo(null)}
                 />
-                <div className="flex gap-2">
-                  <Button type="submit" size="sm" loading={pending} disabled={!replyText.trim()}>Reply</Button>
-                  <Button size="sm" variant="ghost" onClick={() => setReplyTo(null)}>Cancel</Button>
-                </div>
-              </form>
+              </div>
             ) : null}
             {replies.length > 0 ? <ul>{replies.map((item) => renderComment(item, depth + 1))}</ul> : null}
           </div>
@@ -254,27 +278,22 @@ export function CommentSection({
       </h2>
 
       {viewer ? (
-        <form action={() => void submit(null, content)} className="flex gap-3 px-4 py-3 md:px-5">
+        <div className="flex gap-3 px-4 py-3 md:px-5">
           <Avatar src={viewer.avatarUrl} name={viewer.displayName} size={36} />
           <div className="min-w-0 flex-1">
-            <label htmlFor="new-comment" className="sr-only">Add a comment</label>
-            <textarea
+            <CommentComposer
               id="new-comment"
-              value={content}
-              onChange={(event) => setContent(event.target.value)}
-              maxLength={MAX_LENGTH}
-              rows={2}
+              label="Add a comment"
               placeholder="Add a comment…"
-              className={cn(inputClass, "field-sizing-content max-h-48 min-h-[3.25rem] resize-none")}
+              value={content}
+              onChange={setContent}
+              onSubmit={() => void submit(null, content)}
+              pending={pending}
+              maxLength={MAX_LENGTH}
+              submitLabel="Post comment"
             />
-            <div className="mt-2 flex items-center justify-end gap-3">
-              {content.length > 400 ? <span className="text-xs tabular-nums text-muted">{content.length}/{MAX_LENGTH}</span> : null}
-              <Button type="submit" size="sm" loading={pending} disabled={!content.trim()}>
-                {pending ? "Posting…" : "Post"}
-              </Button>
-            </div>
           </div>
-        </form>
+        </div>
       ) : (
         <div className="mx-4 my-3 flex items-center justify-between gap-3 rounded-xl bg-card px-4 py-3 md:mx-5">
           <p className="text-sm text-muted">Log in to join the conversation.</p>
@@ -312,7 +331,7 @@ export function CommentSection({
         open={deleting !== null}
         onClose={() => setDeleting(null)}
         title="Delete this comment?"
-        description="This cannot be undone."
+        description={deletingReplies > 0 ? `This also deletes ${deletingReplies} ${deletingReplies === 1 ? "reply" : "replies"}. This cannot be undone.` : "This cannot be undone."}
         footer={
           <>
             <Button variant="ghost" onClick={() => setDeleting(null)}>Cancel</Button>

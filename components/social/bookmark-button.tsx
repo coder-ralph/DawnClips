@@ -55,12 +55,13 @@ export function BookmarkButton({
   return (
     <button
       type="button"
+      aria-label="Save video"
       aria-pressed={state}
+      title="Save video"
       onClick={() => void toggle()}
       className={cn("action-btn", state && "text-accent-text hover:text-accent-text", className)}
     >
       <Bookmark aria-hidden="true" className="h-[18px] w-[18px]" fill={state ? "currentColor" : "none"} />
-      <span className="sr-only">{state ? "Remove bookmark" : "Save clip"}</span>
     </button>
   );
 }

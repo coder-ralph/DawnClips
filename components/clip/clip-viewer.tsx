@@ -107,7 +107,7 @@ export function ClipViewer({
   return (
     <div role="dialog" aria-modal="true" aria-label={`${text.title} by ${clip.displayName}`} className="fixed inset-0 z-50 flex flex-col bg-black landscape-short:flex-row lg:flex-row">
       <div className="relative h-[40dvh] min-h-0 shrink-0 bg-black landscape-short:h-auto landscape-short:min-w-0 landscape-short:flex-1 lg:h-auto lg:flex-1">
-        <button ref={closeRef} type="button" onClick={close} aria-label="Close" className={cn(roundButton, "absolute left-3 top-3 z-10")}>
+        <button ref={closeRef} type="button" onClick={close} aria-label="Close video" title="Close video" className={cn(roundButton, "absolute left-3 top-3 z-10")}>
           <X aria-hidden="true" className="h-5 w-5" />
         </button>
         <button

@@ -206,7 +206,7 @@ export function ClipMenu({
   return (
     <>
       <ActionMenu
-        label="Clip options"
+        label="More video options"
         items={items}
         buttonClassName="-mr-2 flex h-9 w-9 items-center justify-center rounded-full text-muted hover:bg-hover hover:text-foreground"
       >

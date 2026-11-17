@@ -1,8 +1,9 @@
 "use client";
 
 import { Heart } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useToast } from "@/components/ui/toast";
+import { likeLabel } from "@/lib/a11y-labels";
 import { apiErrorMessage } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { formatCount } from "@/lib/video";
@@ -22,6 +23,7 @@ export function LikeButton({
   const [state, setState] = useState({ liked, count });
   const [pending, setPending] = useState(false);
   const [pop, setPop] = useState(false);
+  const countId = useId();
 
   async function toggle() {
     if (pending) return;
@@ -54,7 +56,9 @@ export function LikeButton({
   return (
     <button
       type="button"
-      aria-pressed={state.liked}
+      aria-label={likeLabel(state.liked)}
+      aria-describedby={countId}
+      title={likeLabel(state.liked)}
       onClick={() => void toggle()}
       className={cn("action-btn", state.liked && "text-like hover:text-like", className)}
     >
@@ -63,8 +67,7 @@ export function LikeButton({
         className={cn("h-[18px] w-[18px]", pop && state.liked && "heart-pop")}
         fill={state.liked ? "currentColor" : "none"}
       />
-      <span className="sr-only">{state.liked ? "Unlike" : "Like"}</span>
-      <span>{formatCount(state.count)}</span>
+      <span id={countId}>{formatCount(state.count)}</span>
     </button>
   );
 }
