@@ -10,6 +10,7 @@ import { ClipMenu } from "@/components/feed/clip-menu";
 import { BookmarkButton } from "@/components/social/bookmark-button";
 import { LikeButton } from "@/components/social/like-button";
 import { Avatar } from "@/components/ui/avatar";
+import { ProfileHoverLink } from "@/components/social/profile-hover-card";
 import { ShareButton } from "@/components/ui/share-button";
 import { VideoPlayer, type PlayerController } from "@/components/video/video-player";
 import { tagLabel } from "@/lib/heroes";
@@ -129,14 +130,14 @@ export function ClipCard({
         </p>
       ) : null}
       <div className="grid grid-cols-[40px_minmax(0,1fr)] gap-x-3">
-        <Link href={profileHref} aria-label={`${clip.displayName}'s profile`} className="h-10 w-10 rounded-full">
+        <ProfileHoverLink username={clip.username} href={profileHref} aria-label={`${clip.displayName}'s profile`} className="h-10 w-10 rounded-full">
           <Avatar src={clip.avatarUrl} name={clip.displayName} size={40} />
-        </Link>
+        </ProfileHoverLink>
 
         <div className="min-w-0">
           <div className="flex items-start justify-between gap-2">
             <p className="min-w-0 truncate text-[15px] leading-5">
-              <Link href={profileHref} className="font-semibold hover:underline">{clip.displayName}</Link>
+              <ProfileHoverLink username={clip.username} href={profileHref} className="font-semibold hover:underline">{clip.displayName}</ProfileHoverLink>
               <span className="text-muted">
                 {" "}@{clip.username} · <time dateTime={clip.createdAt} suppressHydrationWarning>{formatRelativeTime(clip.createdAt)}</time>
                 {text.editedAt ? " · Edited" : ""}

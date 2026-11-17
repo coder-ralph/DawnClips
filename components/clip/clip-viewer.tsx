@@ -1,7 +1,6 @@
 "use client";
 
 import { ChevronLeft, ChevronRight, Lock, MessageCircle, Pin, X } from "lucide-react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ClipPatch } from "@/components/clip/edit-clip-dialog";
@@ -10,6 +9,7 @@ import { HeroChips } from "@/components/feed/clip-card";
 import { ClipMenu } from "@/components/feed/clip-menu";
 import { BookmarkButton } from "@/components/social/bookmark-button";
 import { FollowButton } from "@/components/social/follow-button";
+import { ProfileHoverLink } from "@/components/social/profile-hover-card";
 import { LikeButton } from "@/components/social/like-button";
 import { Avatar } from "@/components/ui/avatar";
 import { ShareButton } from "@/components/ui/share-button";
@@ -20,10 +20,10 @@ import { formatCount, formatRelativeTime } from "@/lib/video";
 import type { ClipDetail, ClipMoment } from "@/types/clips";
 
 const roundButton =
-  "flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm hover:bg-black/80 focus-visible:outline-white";
+  "flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition duration-150 hover:bg-neutral-700/85 motion-safe:active:scale-95 focus-visible:outline-white";
 
 /**
- * Threads-style media viewer. Left: the video with a close button and an arrow that hides the side
+ * Media viewer. Left: the video with a close button and an arrow that hides the side
  * panel. Right: creator, text, moments, actions and comments. Below `lg` the panel sits under the video.
  * `mode="modal"` is the intercepted route over the previous page; `mode="page"` is a direct visit.
  */
@@ -148,11 +148,11 @@ export function ClipViewer({
       >
         <div className="px-4 pt-4">
           <header className="flex items-center gap-3">
-            <Link href={`/profile/${clip.username}`} aria-label={`${clip.displayName}'s profile`} className="rounded-full">
+            <ProfileHoverLink username={clip.username} href={`/profile/${clip.username}`} aria-label={`${clip.displayName}'s profile`} className="rounded-full">
               <Avatar src={clip.avatarUrl} name={clip.displayName} size={40} />
-            </Link>
+            </ProfileHoverLink>
             <div className="min-w-0 flex-1">
-              <Link href={`/profile/${clip.username}`} className="block truncate font-semibold hover:underline">{clip.displayName}</Link>
+              <ProfileHoverLink username={clip.username} href={`/profile/${clip.username}`} className="block truncate font-semibold hover:underline">{clip.displayName}</ProfileHoverLink>
               <p className="truncate text-sm text-muted">
                 @{clip.username} · <time dateTime={clip.createdAt} suppressHydrationWarning>{formatRelativeTime(clip.createdAt)}</time>
                 {text.editedAt ? " · Edited" : ""}

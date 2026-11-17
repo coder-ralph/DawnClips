@@ -3219,3 +3219,213 @@ grant usage, select on all sequences in schema public to service_role;
 -- Tables created later by the same role get the same access.
 alter default privileges in schema public grant select, insert, update, delete on tables to service_role;
 alter default privileges in schema public grant usage, select on sequences to service_role;
+
+-- DawnClips Phase 10: protect clip storage columns from direct writes (R2 storage security patch).
+--
+-- Why: signed-in users hold a database role (authenticated) with table-level insert and update on public.clips, and
+-- the row policies only check ownership of the row. Nothing stopped an owner from writing r2_object_key,
+-- thumbnail_object_key, thumbnail_url, file_size, mime_type, user_id or status themselves through the Data API. A
+-- hand-edited thumbnail_object_key could point at another user's object, which the server would then sign for
+-- playback or delete together with the clip, and a hand-edited status skipped the upload checks.
+--
+-- What this does:
+--   1. Signed-in users can no longer insert clips. The upload routes now insert and update clip rows with the
+--      service role (scoped to the verified owner), so the normal upload flow is unchanged.
+--   2. guard_clip_storage() runs before every insert and update on public.clips:
+--        - For every role, a storage key that is being written must be the key derived from the clip's own owner and
+--          id: clips/<user_id>/<id>.mp4 for the video and clips/<user_id>/<id>.jpg for the poster.
+--        - For signed-in users (anything but service_role, postgres and supabase_admin), user_id, r2_object_key,
+--          thumbnail_object_key, thumbnail_url, file_size, mime_type and status cannot change, and an insert must
+--          be a pending clip with no thumbnail_url.
+--      Title, description, tags, comments_mode, visibility and the existing edit window are unchanged.
+--      Security-definer functions (edit_clip, set_clip_pinned, ...) run as the table owner and are exempt.
+--   3. Existing rows are never rewritten. The key rule only applies to a key that is being written, so a legacy row
+--      whose keys differ from the derived ones keeps working until its keys are touched. The notice below reports them.
+--
+-- Run it in the Supabase SQL editor after schema-phase9.sql. Safe to run more than once. Nothing here changes
+-- Row Level Security policies, Cloudflare R2 or any environment variable.
+--
+-- Optional pre-flight (read-only), expect zero rows. Any row listed has stored keys that are not the derived ones:
+--   select id, user_id, r2_object_key, thumbnail_object_key
+--   from public.clips c
+--   where (c.r2_object_key is not null and c.r2_object_key <> 'clips/' || c.user_id || '/' || c.id || '.mp4')
+--      or (c.thumbnail_object_key is not null and c.thumbnail_object_key <> 'clips/' || c.user_id || '/' || c.id || '.jpg');
+
+create or replace function public.guard_clip_storage()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  privileged boolean := current_user in ('service_role', 'postgres', 'supabase_admin');
+  expected_video text := 'clips/' || new.user_id::text || '/' || new.id::text || '.mp4';
+  expected_poster text := 'clips/' || new.user_id::text || '/' || new.id::text || '.jpg';
+begin
+  if tg_op = 'INSERT' then
+    if new.r2_object_key is not null and new.r2_object_key <> expected_video then
+      raise exception 'invalid clip storage key' using errcode = '42501';
+    end if;
+    if new.thumbnail_object_key is not null and new.thumbnail_object_key <> expected_poster then
+      raise exception 'invalid clip storage key' using errcode = '42501';
+    end if;
+    if not privileged and (new.status is distinct from 'pending' or new.thumbnail_url is not null) then
+      raise exception 'clip storage fields are managed by the server' using errcode = '42501';
+    end if;
+    return new;
+  end if;
+
+  -- A key may only change to the clip's own derived key (or be cleared), whoever writes it.
+  if new.r2_object_key is distinct from old.r2_object_key
+     and new.r2_object_key is not null and new.r2_object_key <> expected_video then
+    raise exception 'invalid clip storage key' using errcode = '42501';
+  end if;
+  if new.thumbnail_object_key is distinct from old.thumbnail_object_key
+     and new.thumbnail_object_key is not null and new.thumbnail_object_key <> expected_poster then
+    raise exception 'invalid clip storage key' using errcode = '42501';
+  end if;
+
+  if not privileged and (
+    new.user_id is distinct from old.user_id
+    or new.r2_object_key is distinct from old.r2_object_key
+    or new.thumbnail_object_key is distinct from old.thumbnail_object_key
+    or new.thumbnail_url is distinct from old.thumbnail_url
+    or new.file_size is distinct from old.file_size
+    or new.mime_type is distinct from old.mime_type
+    or new.status is distinct from old.status
+  ) then
+    raise exception 'clip storage fields are managed by the server' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists guard_clip_storage on public.clips;
+create trigger guard_clip_storage
+  before insert or update on public.clips
+  for each row execute function public.guard_clip_storage();
+
+-- Clips are created by the upload route with the service role (service_role keeps its table access from Phase 9).
+revoke insert on public.clips from authenticated;
+
+-- Report existing rows whose stored keys are not the derived ones. They are left as they are.
+do $$
+declare
+  mismatched integer;
+begin
+  select count(*) into mismatched
+  from public.clips c
+  where (c.r2_object_key is not null and c.r2_object_key <> 'clips/' || c.user_id || '/' || c.id || '.mp4')
+     or (c.thumbnail_object_key is not null and c.thumbnail_object_key <> 'clips/' || c.user_id || '/' || c.id || '.jpg');
+  if mismatched > 0 then
+    raise warning 'DawnClips Phase 10: % clip row(s) store an object key that is not the derived key for their owner and id. The app will not play or delete those objects. Review them with the pre-flight query at the top of this file.', mismatched;
+  else
+    raise notice 'DawnClips Phase 10: every stored clip object key matches its owner and id.';
+  end if;
+end;
+$$;
+
+-- DawnClips Phase 11: delete comments for real.
+--
+-- Why: delete_comment() only marked a comment as deleted (deleted_at set, content replaced by '[deleted]'). The row
+-- stayed in public.comments, list_comments() kept returning it to its author, and the UI showed a "Comment deleted"
+-- tombstone. Replies under a deleted comment were counted but could not be shown to other people.
+--
+-- What this does:
+--   1. delete_comment(target) now deletes the row. Only the author of the comment can delete it (unchanged: there is
+--      no moderator or clip-owner path for comments). Replies are removed with it, which is what the existing
+--      foreign key already declares (comments.parent_id references comments on delete cascade). Siblings, comments
+--      on other clips and every other comment are untouched.
+--   2. clips.comments_count drops by the number of live comments removed (the comment and all its replies), not by
+--      one. The result also lists the ids that were removed so the UI can drop exactly those.
+--   3. One-time clean-up of tombstones created before this change: every row with deleted_at set is deleted, with
+--      its replies, and clips.comments_count is reduced by the live replies that go with them. Tombstones were
+--      already subtracted from the count when they were created.
+--
+-- Comments have no files in Cloudflare R2, so nothing outside the database is touched. Run it in the Supabase SQL
+-- editor after schema-phase10.sql. Safe to run more than once. Row Level Security, grants and the function signature
+-- are unchanged.
+--
+-- Optional pre-flight (read-only). "tombstones" is how many rows step 3 deletes, "live_replies" how many visible
+-- replies are deleted with them:
+--   with recursive doomed as (
+--     select id, deleted_at from public.comments where deleted_at is not null
+--     union
+--     select c.id, c.deleted_at from public.comments c join doomed d on c.parent_id = d.id
+--   )
+--   select count(*) filter (where deleted_at is not null) as tombstones,
+--          count(*) filter (where deleted_at is null) as live_replies
+--   from doomed;
+
+create or replace function public.delete_comment(target uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  viewer uuid := public.requesting_profile_id();
+  clip uuid;
+  doomed uuid[];
+  removed integer;
+  total integer;
+begin
+  if viewer is null then
+    raise exception 'unauthorized' using errcode = '42501';
+  end if;
+
+  -- Only the author can delete a comment. A missing comment and someone else's comment look the same to the caller.
+  select c.clip_id into clip
+  from public.comments c
+  where c.id = target and c.user_id = viewer
+  for update;
+  if not found then
+    raise exception 'not allowed' using errcode = '42501';
+  end if;
+
+  -- The comment and every reply beneath it, however deep.
+  with recursive tree as (
+    select id, deleted_at from public.comments where id = target
+    union
+    select c.id, c.deleted_at from public.comments c join tree t on c.parent_id = t.id
+  )
+  select array_agg(id), (count(*) filter (where deleted_at is null))::integer
+  into doomed, removed
+  from tree;
+
+  delete from public.comments where id = any(doomed);
+
+  perform set_config('dawnclips.allow_counter_write', 'on', true);
+  update public.clips
+  set comments_count = greatest(comments_count - removed, 0)
+  where id = clip
+  returning comments_count into total;
+
+  return jsonb_build_object('deleted', true, 'comments_count', total, 'removed_ids', to_jsonb(doomed));
+end;
+$$;
+
+-- One-time clean-up of comments that were only marked as deleted.
+do $$
+declare
+  purged integer;
+begin
+  perform set_config('dawnclips.allow_counter_write', 'on', true);
+
+  with recursive doomed as (
+    select id, clip_id, deleted_at from public.comments where deleted_at is not null
+    union
+    select c.id, c.clip_id, c.deleted_at from public.comments c join doomed d on c.parent_id = d.id
+  ),
+  live as (
+    select clip_id, (count(*))::integer as n from doomed where deleted_at is null group by clip_id
+  )
+  update public.clips cl
+  set comments_count = greatest(cl.comments_count - live.n, 0)
+  from live
+  where cl.id = live.clip_id;
+
+  delete from public.comments where deleted_at is not null;
+  get diagnostics purged = row_count;
+  raise notice 'DawnClips Phase 11: removed % comment(s) that were only marked as deleted.', purged;
+end;
+$$;

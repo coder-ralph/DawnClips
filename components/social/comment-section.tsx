@@ -5,6 +5,7 @@ import { Flag, MessageCircle, Pencil, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ReportDialog } from "@/components/feed/report-clip";
+import { ProfileHoverLink } from "@/components/social/profile-hover-card";
 import { CommentComposer } from "@/components/social/comment-composer";
 import { Avatar } from "@/components/ui/avatar";
 import { Button, buttonClasses } from "@/components/ui/button";
@@ -196,14 +197,14 @@ export function CommentSection({
       <li key={comment.id}>
         <div className={cn("flex gap-3", depth === 0 ? "px-4 py-3 md:px-5" : "pt-3")}>
           <div className="flex flex-col items-center">
-            <Link href={`/profile/${comment.username}`} tabIndex={-1} aria-hidden="true" className="rounded-full">
+            <ProfileHoverLink username={comment.username} href={`/profile/${comment.username}`} tabIndex={-1} aria-hidden="true" className="rounded-full">
               <Avatar src={comment.avatar_url} name={comment.display_name} size={depth === 0 ? 36 : 28} />
-            </Link>
+            </ProfileHoverLink>
             {replies.length > 0 || replyTo === comment.id ? <span className="mt-2 w-0.5 flex-1 rounded-full bg-line" /> : null}
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm leading-5">
-              <Link href={`/profile/${comment.username}`} className="font-semibold hover:underline">{comment.display_name}</Link>
+              <ProfileHoverLink username={comment.username} href={`/profile/${comment.username}`} className="font-semibold hover:underline">{comment.display_name}</ProfileHoverLink>
               <span className="text-muted"> · <time dateTime={comment.created_at} suppressHydrationWarning>{formatRelativeTime(comment.created_at)}</time></span>
             </p>
             {editing === comment.id ? (
