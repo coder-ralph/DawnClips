@@ -13,7 +13,7 @@ export const siteConfig = {
     name: "coder-ralph",
     url: "https://github.com/coder-ralph",
   },
-  repoUrl: "https://github.com/coder-ralph/DawnClips",
+  repoUrl: "https://github.com/coder-ralph/mlbb-dawnclips",
   // Optional. When set (NEXT_PUBLIC_CONTACT_EMAIL) the legal pages show a mailto link.
   // Without it they point to the project's GitHub repository.
   contactEmail: process.env.NEXT_PUBLIC_CONTACT_EMAIL || null,
