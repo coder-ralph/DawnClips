@@ -41,7 +41,7 @@ export function ClipTile({ clip }: { clip: ClipSummary }) {
           </span>
         ) : null}
       </div>
-      <p className="mt-2 line-clamp-2 text-sm font-medium leading-5 group-hover:underline">{clip.title}</p>
+      <p className="mt-2 line-clamp-2 text-sm font-medium leading-5">{clip.title}</p>
       {clip.username || clip.createdAt ? (
         <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted">
           {clip.username ? <Avatar src={clip.avatarUrl} name={clip.displayName ?? clip.username} size={16} /> : null}
@@ -77,7 +77,7 @@ export function ClipRow({ clip, replace = false }: { clip: ClipSummary; replace?
         <VisibilityBadge visibility={clip.visibility} />
       </div>
       <div className="min-w-0 flex-1 py-0.5">
-        <p className="line-clamp-2 text-sm font-semibold leading-5 group-hover:underline">{clip.title}</p>
+        <p className="line-clamp-2 text-sm font-semibold leading-5">{clip.title}</p>
         <p className="mt-1 truncate text-xs text-muted">
           {clip.username ? `@${clip.username}` : null}
           {clip.username && typeof clip.viewsCount === "number" ? " · " : null}

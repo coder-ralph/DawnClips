@@ -164,7 +164,7 @@ export function ClipCard({
             />
           </div>
           <h2 id={`clip-${clip.id}-title`} className="mt-0.5 text-[15px] font-medium leading-6">
-            <Link href={`/clip/${clip.id}`} className="hover:underline">{text.title}</Link>
+            <Link href={`/clip/${clip.id}`}>{text.title}</Link>
           </h2>
           {text.description ? <p className="line-clamp-2 whitespace-pre-line text-sm leading-6 text-muted">{text.description}</p> : null}
           <HeroChips tags={text.heroTags} />
