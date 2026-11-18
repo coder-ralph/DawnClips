@@ -1,11 +1,11 @@
 import { ProfileStats } from "@/components/profile/profile-stats";
 import { Avatar } from "@/components/ui/avatar";
-import { countries } from "@/lib/validations/profile";
+import { countryName } from "@/lib/countries";
 import { formatJoinDate } from "@/lib/utils";
 import type { PublicProfile } from "@/types/database";
 
 export function ProfileView({ profile, following = false }: { profile: PublicProfile; following?: boolean }) {
-  const country = countries.find((item) => item.code === profile.country)?.label ?? profile.country;
+  const country = countryName(profile.country);
 
   return (
     <header className="px-4 pb-4 pt-6 md:px-5">
