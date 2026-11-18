@@ -12,6 +12,10 @@ export type OwnProfile = {
   roleId: string | null;
   zoneId: string | null;
   country: string;
+  /** Rank key from lib/mlbb-profile (e.g. "mythical_immortal"), or null when not set. */
+  highestRank: string | null;
+  rankStars: number | null;
+  favoriteRoles: string[];
   language: string;
   deletionStatus: DeletionStatus;
   createdAt: string;
@@ -26,6 +30,9 @@ export type PublicProfile = {
   /** Public Mobile Legends role id. The zone id is never part of the public profile. */
   roleId: string | null;
   country: string;
+  highestRank: string | null;
+  rankStars: number | null;
+  favoriteRoles: string[];
   createdAt: string;
   isOwn: boolean;
   showHighlights: boolean;
@@ -50,6 +57,9 @@ export type ProfileRow = {
   role_id: string | null;
   zone_id: string | null;
   country: string;
+  highest_rank: string | null;
+  rank_stars: number | null;
+  favorite_roles: string[];
   language: string;
   deletion_status: DeletionStatus;
   created_at: string;

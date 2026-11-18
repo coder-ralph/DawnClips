@@ -315,6 +315,35 @@
         transparent 65%
       );
   }
+
+  /* Rank badges (RankBadge): a soft breathing glow in the rank's colour (--glow = "r g b") and a slow shimmer sweep. */
+  .rank-badge {
+    box-shadow: 0 0 10px -2px rgb(var(--glow, 168 85 247) / 0.55);
+    animation: badge-glow 2.4s ease-in-out infinite alternate;
+  }
+
+  .rank-badge-shine {
+    background: linear-gradient(110deg, transparent 38%, rgb(255 255 255 / 0.4) 50%, transparent 62%) 200% 0 / 200% 100% no-repeat;
+    animation: badge-shine 3s linear infinite;
+  }
+
+  @keyframes badge-glow {
+    from {
+      box-shadow: 0 0 6px -2px rgb(var(--glow, 168 85 247) / 0.35);
+    }
+    to {
+      box-shadow: 0 0 16px 0 rgb(var(--glow, 168 85 247) / 0.85);
+    }
+  }
+
+  @keyframes badge-shine {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -100% 0;
+    }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -330,6 +359,16 @@
   .skeleton {
     animation: none;
     background-image: none;
+  }
+
+  /* The badge keeps its colour and a still glow; the pulse and the sweep stop. */
+  .rank-badge {
+    animation: none;
+  }
+
+  .rank-badge-shine {
+    animation: none;
+    background: none;
   }
 }
 

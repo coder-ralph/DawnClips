@@ -117,8 +117,9 @@ test("the database already stores alpha-2 codes, so no migration is needed", () 
   // Every code in the list passes that check, and every value the old dropdown could save is still in the list.
   for (const country of countries) assert.match(country.code, /^[A-Z]{2}$/);
   for (const [code] of legacyEleven) assert.ok(isCountryCode(code));
-  // This change adds no SQL file.
-  assert.equal(existsSync(new URL("../supabase/schema-phase13.sql", import.meta.url)), false);
+  // The country picker needs no SQL of its own, and the later profile migration (phase 13) leaves country alone.
+  assert.equal(existsSync(new URL("../supabase/schema-phase13.sql", import.meta.url)), true);
+  assert.doesNotMatch(read("supabase/schema-phase13.sql").replace(/--.*$/gm, ""), /\bcountry\b.*(add|alter|drop)|(add|alter|drop).*\bcountry\b/i);
 });
 
 test("the edit-profile form uses the searchable picker and posts the code; the profile shows the name", () => {
