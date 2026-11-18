@@ -8,10 +8,10 @@ import { updateProfile, type ProfileActionState } from "@/app/(main)/settings/ac
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { CountrySelect } from "@/components/ui/country-select";
 import { Field, inputClass } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { countries } from "@/lib/validations/profile";
 
 export type EditableProfile = {
   displayName: string;
@@ -209,6 +209,7 @@ function EditForm({
   const router = useRouter();
   const pathname = usePathname();
   const toast = useToast();
+  const countryId = useId();
   const [state, action, pending] = useActionState(updateProfile, initialState);
   const handled = useRef<ProfileActionState>(initialState);
 
@@ -258,13 +259,12 @@ function EditForm({
             </label>
           </div>
         </div>
-        <Field label="Country">
-          <select name="country" defaultValue={profile.country} className={inputClass}>
-            {countries.map((country) => (
-              <option key={country.code} value={country.code}>{country.label}</option>
-            ))}
-          </select>
-        </Field>
+        <div>
+          <label htmlFor={countryId} className="block text-sm font-medium text-foreground">Country</label>
+          <div className="mt-1.5">
+            <CountrySelect id={countryId} name="country" defaultValue={profile.country} />
+          </div>
+        </div>
         {state.status === "error" ? <p role="alert" className="text-sm text-danger">{state.message}</p> : null}
       </div>
     </form>

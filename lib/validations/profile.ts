@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isCountryCode } from "@/lib/countries";
 import { usernameError } from "@/lib/username";
 
 export const profileUpdateSchema = z.object({
@@ -20,21 +21,7 @@ export const profileUpdateSchema = z.object({
     .refine((value) => value === "" || /^[0-9]{1,8}$/.test(value), {
       message: "Zone ID must be 1–8 digits.",
     }),
-  country: z.string().trim().regex(/^[A-Z]{2}$/, "Choose a country."),
+  country: z.string().trim().refine(isCountryCode, "Choose a country."),
 });
 
 export type ProfileUpdateInput = z.infer<typeof profileUpdateSchema>;
-
-export const countries = [
-  { code: "PH", label: "Philippines" },
-  { code: "ID", label: "Indonesia" },
-  { code: "MY", label: "Malaysia" },
-  { code: "SG", label: "Singapore" },
-  { code: "TH", label: "Thailand" },
-  { code: "VN", label: "Vietnam" },
-  { code: "US", label: "United States" },
-  { code: "GB", label: "United Kingdom" },
-  { code: "BR", label: "Brazil" },
-  { code: "JP", label: "Japan" },
-  { code: "KR", label: "South Korea" },
-] as const;
