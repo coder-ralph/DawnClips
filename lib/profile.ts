@@ -4,6 +4,7 @@ import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
 import { cache } from "react";
 import { generateUsername } from "@/lib/username";
 import { logDbError } from "@/lib/db-log";
+import { isRank, isRole, normalizeRoles } from "@/lib/mlbb-profile";
 import { provisionProfile } from "@/lib/profile-provision";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -11,7 +12,7 @@ import { safeErrorMessage } from "@/lib/utils";
 import type { OwnProfile, ProfileRow, PublicProfile } from "@/types/database";
 
 const ownProfileColumns =
-  "id, clerk_user_id, email, email_verified, display_name, username, avatar_url, bio, role_id, zone_id, country, language, deletion_status, created_at";
+  "id, clerk_user_id, email, email_verified, display_name, username, avatar_url, bio, role_id, zone_id, country, highest_rank, rank_stars, favorite_roles, language, deletion_status, created_at";
 
 export type ProfileSyncResult =
   | { status: "signed_out" }
@@ -33,6 +34,9 @@ function mapOwnProfile(row: ProfileRow): OwnProfile {
     roleId: row.role_id,
     zoneId: row.zone_id,
     country: row.country,
+    highestRank: isRank(row.highest_rank) ? row.highest_rank : null,
+    rankStars: isRank(row.highest_rank) && typeof row.rank_stars === "number" ? row.rank_stars : null,
+    favoriteRoles: normalizeRoles(Array.isArray(row.favorite_roles) ? row.favorite_roles : []),
     language: row.language,
     deletionStatus: row.deletion_status,
     createdAt: row.created_at,
@@ -51,6 +55,9 @@ function mapPublicProfile(value: unknown): PublicProfile | null {
     bio: String(row.bio ?? ""),
     roleId: typeof row.role_id === "string" && row.role_id ? row.role_id : null,
     country: String(row.country ?? "PH"),
+    highestRank: isRank(row.highest_rank) ? row.highest_rank : null,
+    rankStars: isRank(row.highest_rank) && typeof row.rank_stars === "number" ? row.rank_stars : null,
+    favoriteRoles: normalizeRoles(Array.isArray(row.favorite_roles) ? row.favorite_roles.filter(isRole) : []),
     createdAt: String(row.created_at ?? ""),
     isOwn: Boolean(row.is_own),
     showHighlights: Boolean(row.show_highlights),

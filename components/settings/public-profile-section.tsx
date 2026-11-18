@@ -29,6 +29,9 @@ export function PublicProfileSection({ profile }: { profile: OwnProfile }) {
             roleId: profile.roleId,
             zoneId: profile.zoneId,
             country: profile.country,
+            highestRank: profile.highestRank,
+            rankStars: profile.rankStars,
+            favoriteRoles: profile.favoriteRoles,
             avatarUrl: profile.avatarUrl,
           }}
         />

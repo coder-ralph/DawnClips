@@ -2,6 +2,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
+import { normalizeRoles } from "@/lib/mlbb-profile";
 import { profileUpdateSchema } from "@/lib/validations/profile";
 import { normalizeUsername } from "@/lib/username";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -23,6 +24,9 @@ export async function updateProfile(_state: ProfileActionState, formData: FormDa
     roleId: formData.get("roleId"),
     zoneId: formData.get("zoneId"),
     country: formData.get("country"),
+    highestRank: formData.get("highestRank") ?? "",
+    rankStars: formData.get("rankStars") ?? "",
+    favoriteRoles: formData.getAll("favoriteRoles").map(String),
   });
   if (!parsed.success) {
     return { status: "error", message: parsed.error.issues[0]?.message ?? "Check the form and try again." };
@@ -50,6 +54,10 @@ export async function updateProfile(_state: ProfileActionState, formData: FormDa
       role_id: input.roleId || null,
       zone_id: input.zoneId || null,
       country: input.country,
+      highest_rank: input.highestRank || null,
+      // Stars only mean something with a rank; the form leaves the field out for ranks below Mythic.
+      rank_stars: input.highestRank && input.rankStars !== "" ? Number(input.rankStars) : null,
+      favorite_roles: normalizeRoles(input.favoriteRoles),
     })
     .eq("clerk_user_id", userId)
     .select("username")

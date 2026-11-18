@@ -1,4 +1,5 @@
 import { ProfileStats } from "@/components/profile/profile-stats";
+import { ProfileGameInfo } from "@/components/profile/profile-game-info";
 import { Avatar } from "@/components/ui/avatar";
 import { countryName } from "@/lib/countries";
 import { formatJoinDate } from "@/lib/utils";
@@ -25,6 +26,7 @@ export function ProfileView({ profile, following = false }: { profile: PublicPro
         {country} · Joined {formatJoinDate(profile.createdAt)}
         {profile.roleId ? <> · Role ID <span className="tabular-nums">{profile.roleId}</span></> : null}
       </p>
+      <ProfileGameInfo highestRank={profile.highestRank} rankStars={profile.rankStars} favoriteRoles={profile.favoriteRoles} />
       <ProfileStats profile={profile} following={following} />
     </header>
   );

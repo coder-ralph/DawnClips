@@ -6,6 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { updateProfile, type ProfileActionState } from "@/app/(main)/settings/actions";
 import { ActionMenu } from "@/components/ui/action-menu";
+import { FavoriteRolesSelect } from "@/components/profile/favorite-roles-select";
+import { HighestRankFields } from "@/components/profile/rank-fields";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { CountrySelect } from "@/components/ui/country-select";
@@ -20,23 +22,27 @@ export type EditableProfile = {
   roleId: string | null;
   zoneId: string | null;
   country: string;
+  highestRank: string | null;
+  rankStars: number | null;
+  favoriteRoles: string[];
   avatarUrl: string | null;
 };
 
 const idsTooltip = "ML role id is public to your profile, zone id is private/hidden.";
+const rolesTooltip = "Select up to two roles. If you play across multiple playstyles, select All-Rounder.";
 const maxPictureBytes = 10 * 1024 * 1024;
 const pictureTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const initialState: ProfileActionState = { status: "idle" };
 
 /** Info icon with a tooltip that opens on hover, keyboard focus and tap. */
-function InfoTip({ text }: { text: string }) {
+function InfoTip({ text, label }: { text: string; label: string }) {
   const id = useId();
   const [open, setOpen] = useState(false);
   return (
     <span className="relative inline-flex" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
       <button
         type="button"
-        aria-label="About Role ID and Zone ID"
+        aria-label={label}
         aria-describedby={id}
         onClick={() => setOpen((current) => !current)}
         onFocus={() => setOpen(true)}
@@ -210,6 +216,7 @@ function EditForm({
   const pathname = usePathname();
   const toast = useToast();
   const countryId = useId();
+  const rolesLabelId = useId();
   const [state, action, pending] = useActionState(updateProfile, initialState);
   const handled = useRef<ProfileActionState>(initialState);
 
@@ -246,7 +253,7 @@ function EditForm({
         <div>
           <div className="mb-1.5 flex items-center justify-between">
             <span className="text-sm font-medium">Mobile Legends IDs <span className="font-normal text-muted">(optional)</span></span>
-            <InfoTip text={idsTooltip} />
+            <InfoTip text={idsTooltip} label="About Role ID and Zone ID" />
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
@@ -258,6 +265,14 @@ function EditForm({
               <input name="zoneId" defaultValue={profile.zoneId ?? ""} inputMode="numeric" maxLength={8} className={`${inputClass} mt-1`} />
             </label>
           </div>
+        </div>
+        <HighestRankFields defaultRank={profile.highestRank} defaultStars={profile.rankStars} />
+        <div>
+          <div className="mb-1.5 flex items-center justify-between">
+            <span id={rolesLabelId} className="text-sm font-medium">Favorite roles <span className="font-normal text-muted">(optional)</span></span>
+            <InfoTip text={rolesTooltip} label="About favorite roles" />
+          </div>
+          <FavoriteRolesSelect name="favoriteRoles" labelledBy={rolesLabelId} defaultValue={profile.favoriteRoles} />
         </div>
         <div>
           <label htmlFor={countryId} className="block text-sm font-medium text-foreground">Country</label>

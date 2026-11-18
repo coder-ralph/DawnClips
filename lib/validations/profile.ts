@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isCountryCode } from "@/lib/countries";
+import { isRank, rolesError, starsError } from "@/lib/mlbb-profile";
 import { usernameError } from "@/lib/username";
 
 export const profileUpdateSchema = z.object({
@@ -22,6 +23,15 @@ export const profileUpdateSchema = z.object({
       message: "Zone ID must be 1–8 digits.",
     }),
   country: z.string().trim().refine(isCountryCode, "Choose a country."),
+  // Highest rank and its stars come as text ("" = not set). Which star counts fit which rank is checked below.
+  highestRank: z.string().trim().default("").refine((value) => value === "" || isRank(value), "Choose a rank from the list."),
+  rankStars: z.string().trim().default(""),
+  favoriteRoles: z.array(z.string()).default([]),
+}).superRefine((value, ctx) => {
+  const stars = starsError(value.highestRank, value.rankStars);
+  if (stars) ctx.addIssue({ code: "custom", path: ["rankStars"], message: stars });
+  const roles = rolesError(value.favoriteRoles);
+  if (roles) ctx.addIssue({ code: "custom", path: ["favoriteRoles"], message: roles });
 });
 
 export type ProfileUpdateInput = z.infer<typeof profileUpdateSchema>;
