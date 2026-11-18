@@ -73,3 +73,23 @@ test("the comment section uses the composer for comments and replies", () => {
   assert.match(source, /submitLabel="Post reply"/);
   assert.match(source, /maxLength=\{MAX_LENGTH\}/);
 });
+
+test("the comment box grows with its text and shows no scrollbar", () => {
+  const source = strip(read("components/social/comment-composer.tsx"));
+  const field = source.slice(source.indexOf("<textarea"), source.indexOf("/>", source.indexOf("<textarea")));
+  // Auto-growing: one row to start, height measured from the content, hidden scrollbar, no fixed height or manual resize handle.
+  assert.match(field, /rows=\{1\}/);
+  assert.match(field, /className="[^"]*\bno-scrollbar\b/);
+  assert.match(field, /resize-none/);
+  assert.doesNotMatch(field, /overflow-y-scroll|[\s"]h-/);
+  // The cap is generous and relative to the screen, so the box does not turn into a small scrolling window.
+  assert.match(field, /max-h-\[min\(16rem,40dvh\)\]/);
+  assert.match(source, /node\.style\.height = `\$\{node\.scrollHeight\}px`/);
+  // The utility that hides the scrollbar exists for both Firefox and WebKit/Blink.
+  const css = read("app/globals.css");
+  assert.match(css, /\.no-scrollbar\s*\{\s*scrollbar-width:\s*none;/);
+  assert.match(css, /\.no-scrollbar::-webkit-scrollbar\s*\{\s*display:\s*none;/);
+  // Re-measured when the window is resized, because the text re-wraps.
+  assert.match(source, /addEventListener\("resize", fit\)/);
+  assert.match(source, /removeEventListener\("resize", fit\)/);
+});

@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowUp, Loader2, Smile } from "lucide-react";
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { emojiGroups } from "@/lib/emoji";
 import { insertAtCursor } from "@/lib/text-insert";
@@ -42,13 +42,26 @@ export function CommentComposer({
   const panelId = useId();
   const canSubmit = value.trim().length > 0 && !pending;
 
-  // The box is one line tall until the text wraps, then grows to a few lines and scrolls.
-  useLayoutEffect(() => {
+  // The box is one line tall until the text wraps, then grows with it. Past the CSS max height it scrolls inside,
+  // without a visible scrollbar.
+  const fit = useCallback(() => {
     const node = textarea.current;
     if (!node) return;
+    const top = node.scrollTop;
     node.style.height = "auto";
     node.style.height = `${node.scrollHeight}px`;
-  }, [value]);
+    node.scrollTop = top;
+  }, []);
+
+  useLayoutEffect(() => {
+    fit();
+  }, [value, fit]);
+
+  // A wider or narrower window re-wraps the text, so the height is measured again.
+  useEffect(() => {
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [fit]);
 
   // After an emoji is inserted the caret goes right behind it.
   useEffect(() => {
@@ -105,7 +118,7 @@ export function CommentComposer({
           rows={1}
           autoFocus={autoFocus}
           placeholder={placeholder}
-          className="block max-h-36 min-h-9 min-w-0 flex-1 resize-none bg-transparent py-1.5 text-base leading-6 text-foreground outline-none placeholder:text-muted md:text-[15px]"
+          className="no-scrollbar block max-h-[min(16rem,40dvh)] min-h-9 min-w-0 flex-1 resize-none bg-transparent py-1.5 text-base leading-6 text-foreground outline-none placeholder:text-muted md:text-[15px]"
         />
         {value.length > maxLength - 100 ? (
           <span className="mb-2 shrink-0 px-1 text-xs tabular-nums text-muted">{value.length}/{maxLength}</span>
