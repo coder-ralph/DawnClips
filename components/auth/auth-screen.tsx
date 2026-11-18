@@ -3,6 +3,24 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { Logo } from "@/components/ui/logo";
 import { siteConfig } from "@/config/site";
+import { clerkAppearance } from "@/lib/clerk-appearance";
+
+// Sign-in and sign-up are separate routes, so the Clerk card is torn down and mounted again when switching. Until the new
+// card is there its place would be empty and everything under it would jump up and back down. This much room is kept for
+// the card in both modes (and shown as a placeholder meanwhile), so the logo, the card and the links stay where they are.
+// A taller card (an error, a verification step) still grows past it.
+const CARD_MIN_HEIGHT = 520;
+
+// Painted in the card's own colour, so swapping the placeholder for the card reads as the card staying put.
+function CardPlaceholder() {
+  return (
+    <div
+      aria-hidden="true"
+      className="w-full max-w-[400px] rounded-2xl"
+      style={{ height: CARD_MIN_HEIGHT, backgroundColor: clerkAppearance.variables.colorBackground }}
+    />
+  );
+}
 
 export function AuthScreen({ mode }: { mode: "sign-in" | "sign-up" }) {
   return (
@@ -10,13 +28,15 @@ export function AuthScreen({ mode }: { mode: "sign-in" | "sign-up" }) {
       <div className="mb-6">
         <Logo />
       </div>
-      <Suspense fallback={<div className="h-[520px] w-full max-w-[400px] rounded-2xl bg-[var(--card)]" />}>
-        {mode === "sign-in" ? (
-          <SignIn path="/sign-in" routing="path" signUpUrl="/sign-up" fallbackRedirectUrl="/" signUpFallbackRedirectUrl="/profile" />
-        ) : (
-          <SignUp path="/sign-up" routing="path" signInUrl="/sign-in" fallbackRedirectUrl="/profile" />
-        )}
-      </Suspense>
+      <div className="flex w-full flex-col items-center" style={{ minHeight: CARD_MIN_HEIGHT }}>
+        <Suspense fallback={<CardPlaceholder />}>
+          {mode === "sign-in" ? (
+            <SignIn path="/sign-in" routing="path" signUpUrl="/sign-up" fallbackRedirectUrl="/" signUpFallbackRedirectUrl="/profile" fallback={<CardPlaceholder />} />
+          ) : (
+            <SignUp path="/sign-up" routing="path" signInUrl="/sign-in" fallbackRedirectUrl="/profile" fallback={<CardPlaceholder />} />
+          )}
+        </Suspense>
+      </div>
       <p className="mt-6 max-w-md text-center text-xs leading-5 text-[var(--text-secondary)]">
         {siteConfig.disclaimer}
       </p>

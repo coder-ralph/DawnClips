@@ -23,15 +23,15 @@ export const clerkLocalization = {
   signIn: {
     start: {
       title: "Welcome back to {{applicationName}}",
-      subtitle: "Sign in to continue to your account",
+      subtitle: "Sign in to continue to your account.",
       actionText: "Don't have an account?",
       actionLink: "Sign up",
     },
   },
   signUp: {
     start: {
-      title: "Create your {{applicationName}} account",
-      subtitle: "Your MLBB moments. Your community.",
+      title: "Join {{applicationName}}",
+      subtitle: "Share your MLBB moments with the community.",
       actionText: "Already have an account?",
       actionLink: "Sign in",
     },
