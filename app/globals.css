@@ -308,11 +308,12 @@
 
   .auth-backdrop {
     background-color: var(--background);
-    background-image: repeating-linear-gradient(
-      -45deg,
-      var(--hover) 0 1px,
-      transparent 1px 10px
-    );
+    background-image:
+      radial-gradient(
+        ellipse at 50% 0%,
+        rgba(124, 58, 237, 0.12),
+        transparent 65%
+      );
   }
 }
 

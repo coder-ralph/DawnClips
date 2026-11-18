@@ -22,15 +22,15 @@ export const clerkAppearance = {
 export const clerkLocalization = {
   signIn: {
     start: {
-      title: "Sign in to DawnClips",
-      subtitle: "Welcome back! Sign in to continue",
+      title: "Welcome back to {{applicationName}}",
+      subtitle: "Sign in to continue to your account",
       actionText: "Don't have an account?",
       actionLink: "Sign up",
     },
   },
   signUp: {
     start: {
-      title: "Create your DawnClips account",
+      title: "Create your {{applicationName}} account",
       subtitle: "Your MLBB moments. Your community.",
       actionText: "Already have an account?",
       actionLink: "Sign in",
