@@ -1,9 +1,9 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { Flag, MessageCircle, Pencil, Trash2 } from "lucide-react";
+import { Flag, Heart, MessageCircle, Pencil, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ReportDialog } from "@/components/feed/report-clip";
 import { ProfileHoverLink } from "@/components/social/profile-hover-card";
 import { CommentComposer } from "@/components/social/comment-composer";
@@ -13,10 +13,12 @@ import { Dialog } from "@/components/ui/dialog";
 import { inputClass } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
+import { commentLikeLabel } from "@/lib/a11y-labels";
 import { apiErrorMessage } from "@/lib/api-client";
+import { withLike, withLikeDefaults, withLikeState } from "@/lib/comment-likes";
 import { removeSubtree, restoreComments, subtreeIds, visibleComments } from "@/lib/comment-tree";
 import { cn } from "@/lib/utils";
-import { formatRelativeTime } from "@/lib/video";
+import { formatCount, formatRelativeTime } from "@/lib/video";
 
 type Comment = {
   id: string;
@@ -25,6 +27,8 @@ type Comment = {
   created_at: string;
   deleted: boolean;
   is_own: boolean;
+  likes_count: number;
+  liked: boolean;
   username: string;
   display_name: string;
   avatar_url?: string | null;
@@ -60,6 +64,10 @@ export function CommentSection({
   const [pending, setPending] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const tempCounter = useRef(0);
+  const countIdBase = useId();
+  const [popped, setPopped] = useState<string | null>(null);
+  // Comments whose like request is still running, so a second click cannot send a second request.
+  const likeInFlight = useRef(new Set<string>());
   // Comments whose deletion request is still running, so a second click cannot send a second request.
   const deleteInFlight = useRef(new Set<string>());
 
@@ -68,7 +76,7 @@ export function CommentSection({
     void fetch(`/api/clips/${clipId}/comments`)
       .then((response) => response.json())
       .then((body: { comments?: Comment[] }) => {
-        if (active) setComments(visibleComments(body.comments ?? []));
+        if (active) setComments(visibleComments(body.comments ?? []).map(withLikeDefaults));
       })
       .catch(() => {
         if (active) setLoadError(true);
@@ -93,6 +101,8 @@ export function CommentSection({
       created_at: new Date().toISOString(),
       deleted: false,
       is_own: true,
+      likes_count: 0,
+      liked: false,
       username: viewer?.username ?? "",
       display_name: viewer?.displayName ?? "You",
       avatar_url: viewer?.avatarUrl ?? null,
@@ -144,6 +154,38 @@ export function CommentSection({
     if (!response?.ok) {
       setComments(previous);
       toast("Could not edit the comment.", "error");
+    }
+  }
+
+  async function toggleLike(id: string) {
+    if (likeInFlight.current.has(id)) return;
+    const current = comments.find((item) => item.id === id);
+    if (!current) return;
+    const previous = { liked: current.liked, likes_count: current.likes_count };
+    const next = !previous.liked;
+    likeInFlight.current.add(id);
+    setComments((list) => withLike(list, id, next));
+    setPopped(next ? id : null);
+    try {
+      const response = await fetch(`/api/comments/${id}/like`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ desired: next }),
+      }).catch(() => null);
+      if (!response?.ok) {
+        // Put back this comment's previous like state only, then say why. A refused like (the comment is gone, or
+        // no longer visible) also reloads the list so it matches the server.
+        setComments((list) => withLikeState(list, id, previous));
+        toast(response ? await apiErrorMessage(response, "Could not update the like.") : "Could not update the like. Check your connection.", "error");
+        if (response && (response.status === 403 || response.status === 404)) setReloadKey((value) => value + 1);
+        return;
+      }
+      const body = (await response.json().catch(() => null)) as { liked?: boolean; likesCount?: number } | null;
+      if (body && typeof body.liked === "boolean" && typeof body.likesCount === "number") {
+        setComments((list) => withLikeState(list, id, { liked: body.liked as boolean, likes_count: body.likesCount as number }));
+      }
+    } finally {
+      likeInFlight.current.delete(id);
     }
   }
 
@@ -227,6 +269,21 @@ export function CommentSection({
             )}
             {canAct && editing !== comment.id ? (
               <div className="-ml-2 mt-0.5 flex flex-wrap items-center text-xs">
+                <button
+                  type="button"
+                  aria-label={commentLikeLabel(comment.liked)}
+                  title={commentLikeLabel(comment.liked)}
+                  aria-describedby={comment.likes_count > 0 ? `${countIdBase}-${comment.id}` : undefined}
+                  onClick={() => void toggleLike(comment.id)}
+                  className={cn("action-btn", comment.liked && "text-like hover:text-like")}
+                >
+                  <Heart
+                    aria-hidden="true"
+                    className={cn("h-4 w-4", popped === comment.id && comment.liked && "heart-pop")}
+                    fill={comment.liked ? "currentColor" : "none"}
+                  />
+                  {comment.likes_count > 0 ? <span id={`${countIdBase}-${comment.id}`}>{formatCount(comment.likes_count)}</span> : null}
+                </button>
                 {isSignedIn && depth < MAX_DEPTH ? (
                   <button type="button" onClick={() => { setReplyTo(replyTo === comment.id ? null : comment.id); setReplyText(""); }} className="action-btn">
                     <MessageCircle aria-hidden="true" className="h-4 w-4" /> Reply
@@ -279,8 +336,10 @@ export function CommentSection({
       </h2>
 
       {viewer ? (
-        <div className="flex gap-3 px-4 py-3 md:px-5">
-          <Avatar src={viewer.avatarUrl} name={viewer.displayName} size={36} />
+        <div className="flex items-start gap-2.5 px-4 py-3 md:px-5">
+          <span className="mt-1 shrink-0">
+            <Avatar src={viewer.avatarUrl} name={viewer.displayName} size={36} />
+          </span>
           <div className="min-w-0 flex-1">
             <CommentComposer
               id="new-comment"

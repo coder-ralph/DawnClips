@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowUp, Loader2, Smile } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { emojiGroups } from "@/lib/emoji";
 import { insertAtCursor } from "@/lib/text-insert";
@@ -42,6 +42,14 @@ export function CommentComposer({
   const panelId = useId();
   const canSubmit = value.trim().length > 0 && !pending;
 
+  // The box is one line tall until the text wraps, then grows to a few lines and scrolls.
+  useLayoutEffect(() => {
+    const node = textarea.current;
+    if (!node) return;
+    node.style.height = "auto";
+    node.style.height = `${node.scrollHeight}px`;
+  }, [value]);
+
   // After an emoji is inserted the caret goes right behind it.
   useEffect(() => {
     const node = textarea.current;
@@ -78,29 +86,54 @@ export function CommentComposer({
           emojiButton.current?.focus();
         }
       }}
-      className="rounded-2xl border border-line-strong bg-background transition-colors focus-within:border-accent-text focus-within:outline-2 focus-within:outline-accent-text"
     >
-      <label htmlFor={id} className="sr-only">{label}</label>
-      <textarea
-        ref={textarea}
-        id={id}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-            event.preventDefault();
-            submit();
-          }
-        }}
-        maxLength={maxLength}
-        rows={3}
-        autoFocus={autoFocus}
-        placeholder={placeholder}
-        className="field-sizing-content block max-h-48 min-h-[4.5rem] w-full resize-none bg-transparent px-3.5 pb-1 pt-3 text-[15px] leading-6 text-foreground outline-none placeholder:text-muted"
-      />
+      {/* One compact row: input, emoji button and send button. It grows upward only when the text wraps. */}
+      <div className="flex items-end gap-0.5 rounded-[22px] border border-line-strong bg-background py-1 pl-4 pr-1 transition-colors focus-within:border-accent-text focus-within:outline-2 focus-within:outline-accent-text">
+        <label htmlFor={id} className="sr-only">{label}</label>
+        <textarea
+          ref={textarea}
+          id={id}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+              event.preventDefault();
+              submit();
+            }
+          }}
+          maxLength={maxLength}
+          rows={1}
+          autoFocus={autoFocus}
+          placeholder={placeholder}
+          className="block max-h-36 min-h-9 min-w-0 flex-1 resize-none bg-transparent py-1.5 text-base leading-6 text-foreground outline-none placeholder:text-muted md:text-[15px]"
+        />
+        {value.length > maxLength - 100 ? (
+          <span className="mb-2 shrink-0 px-1 text-xs tabular-nums text-muted">{value.length}/{maxLength}</span>
+        ) : null}
+        <button
+          ref={emojiButton}
+          type="button"
+          aria-label="Insert emoji"
+          aria-expanded={emojiOpen}
+          aria-controls={emojiOpen ? panelId : undefined}
+          onClick={() => setEmojiOpen((open) => !open)}
+          className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent-text aria-expanded:bg-hover aria-expanded:text-foreground"
+        >
+          <Smile aria-hidden="true" className="h-5 w-5" />
+        </button>
+        <button
+          type="submit"
+          disabled={!canSubmit}
+          aria-label={submitLabel}
+          title={submitLabel}
+          className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-accent-fg transition hover:brightness-95 active:brightness-90 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-text"
+        >
+          {pending ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <ArrowUp aria-hidden="true" className="h-4 w-4" />}
+        </button>
+      </div>
 
       {emojiOpen ? (
-        <div id={panelId} role="group" aria-label="Emoji" className="max-h-44 overflow-y-auto border-t px-2 py-2">
+        <div id={panelId} role="group" aria-label="Emoji" className="mt-2 max-h-44 overflow-y-auto rounded-2xl border bg-background px-2 py-2">
           {emojiGroups.map((group) => (
             <div key={group.id} className="pb-1">
               <p className="px-1 pb-0.5 text-xs font-medium text-muted">{group.label}</p>
@@ -121,34 +154,11 @@ export function CommentComposer({
         </div>
       ) : null}
 
-      <div className="flex items-center gap-1 px-2 pb-2">
-        <button
-          ref={emojiButton}
-          type="button"
-          aria-label="Insert emoji"
-          aria-expanded={emojiOpen}
-          aria-controls={emojiOpen ? panelId : undefined}
-          onClick={() => setEmojiOpen((open) => !open)}
-          className="flex h-9 w-9 items-center justify-center rounded-full text-muted hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent-text aria-expanded:bg-hover aria-expanded:text-foreground"
-        >
-          <Smile aria-hidden="true" className="h-5 w-5" />
-        </button>
-        {onCancel ? <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button> : null}
-        {value.length > maxLength - 100 ? (
-          <span className="ml-auto pr-1 text-xs tabular-nums text-muted">{value.length}/{maxLength}</span>
-        ) : (
-          <span className="ml-auto" />
-        )}
-        <button
-          type="submit"
-          disabled={!canSubmit}
-          aria-label={submitLabel}
-          title={submitLabel}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-accent-fg transition hover:brightness-95 active:brightness-90 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-text"
-        >
-          {pending ? <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin" /> : <ArrowUp aria-hidden="true" className="h-5 w-5" />}
-        </button>
-      </div>
+      {onCancel ? (
+        <div className="mt-1 flex justify-end">
+          <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
+        </div>
+      ) : null}
     </form>
   );
 }

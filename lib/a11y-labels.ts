@@ -12,3 +12,7 @@ export function audioLabel({ muted, volume, playing }: { muted: boolean; volume:
 }
 
 export const likeLabel = (liked: boolean) => (liked ? "Unlike video" : "Like video");
+
+export function commentLikeLabel(liked: boolean) {
+  return liked ? "Unlike comment" : "Like comment";
+}
