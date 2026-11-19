@@ -101,6 +101,8 @@ export async function deleteAccount(clerkUserId: string) {
   await admin.from("bookmarks").delete().eq("user_id", profile.data.id);
   await admin.from("follows").delete().or(`follower_id.eq.${profile.data.id},following_id.eq.${profile.data.id}`);
   await admin.from("blocks").delete().or(`blocker_id.eq.${profile.data.id},blocked_id.eq.${profile.data.id}`);
+  // Mutes and restrictions, both the ones this person made and the ones made about them.
+  await admin.from("profile_controls").delete().or(`owner_id.eq.${profile.data.id},target_id.eq.${profile.data.id}`);
   await admin.from("notifications").delete().or(`recipient_id.eq.${profile.data.id},actor_id.eq.${profile.data.id}`);
   await admin.from("reports").delete().eq("reporter_id", profile.data.id);
 

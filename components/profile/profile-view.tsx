@@ -1,11 +1,13 @@
+import { FollowsYouBadge } from "@/components/profile/follows-you-badge";
 import { ProfileStats } from "@/components/profile/profile-stats";
 import { ProfileGameInfo } from "@/components/profile/profile-game-info";
 import { Avatar } from "@/components/ui/avatar";
 import { countryName } from "@/lib/countries";
+import { noRelationship, type Relationship } from "@/lib/relationships";
 import { formatJoinDate } from "@/lib/utils";
 import type { PublicProfile } from "@/types/database";
 
-export function ProfileView({ profile, following = false }: { profile: PublicProfile; following?: boolean }) {
+export function ProfileView({ profile, relationship = noRelationship }: { profile: PublicProfile; relationship?: Relationship }) {
   const country = countryName(profile.country);
 
   return (
@@ -13,7 +15,10 @@ export function ProfileView({ profile, following = false }: { profile: PublicPro
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h1 className="break-words text-2xl font-bold leading-tight">{profile.displayName}</h1>
-          <p className="mt-0.5 text-[15px] text-muted">@{profile.username}</p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] text-muted">
+            @{profile.username}
+            {profile.isOwn ? null : <FollowsYouBadge profileId={profile.id} initial={relationship.followedBy} />}
+          </p>
         </div>
         <Avatar src={profile.avatarUrl} name={profile.displayName} size={80} />
       </div>
@@ -24,10 +29,11 @@ export function ProfileView({ profile, following = false }: { profile: PublicPro
       ) : null}
       <p className="mt-2 text-sm text-muted">
         {country} · Joined {formatJoinDate(profile.createdAt)}
-        {profile.roleId ? <> · Role ID <span className="tabular-nums">{profile.roleId}</span></> : null}
+        {profile.roleId ? <> · Role ID: <span className="tabular-nums">{profile.roleId}</span></> : null}
       </p>
       <ProfileGameInfo highestRank={profile.highestRank} rankStars={profile.rankStars} favoriteRoles={profile.favoriteRoles} />
-      <ProfileStats profile={profile} following={following} />
+      {/* The key re-reads the counts after a refresh (for example once a follower was removed). */}
+      <ProfileStats key={`${profile.followersCount}:${profile.followingCount}`} profile={profile} relationship={relationship} />
     </header>
   );
 }

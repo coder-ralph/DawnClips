@@ -63,11 +63,11 @@ function mapFeedClip(row: Record<string, unknown>): FeedClip | null {
   };
 }
 
-type ViewerFlags = Record<string, { liked?: boolean; bookmarked?: boolean; following?: boolean }>;
+type ViewerFlags = Record<string, { liked?: boolean; bookmarked?: boolean; following?: boolean; muted?: boolean; restricted?: boolean }>;
 
 /**
  * Turns feed-shaped RPC rows into FeedClip objects and adds viewer-specific
- * state (own clip, liked, bookmarked, following) in one extra lookup.
+ * state (own clip, liked, bookmarked, following, muted, restricted) in one extra lookup.
  */
 export async function hydrateClips(rows: unknown): Promise<FeedClip[]> {
   const clips = Array.isArray(rows)
@@ -92,6 +92,8 @@ export async function hydrateClips(rows: unknown): Promise<FeedClip[]> {
     liked: Boolean(flags.data[clip.id]?.liked),
     bookmarked: Boolean(flags.data[clip.id]?.bookmarked),
     following: Boolean(flags.data[clip.id]?.following),
+    muted: Boolean(flags.data[clip.id]?.muted),
+    restricted: Boolean(flags.data[clip.id]?.restricted),
   }));
 }
 

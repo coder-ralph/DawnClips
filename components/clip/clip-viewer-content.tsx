@@ -39,7 +39,7 @@ export async function ClipViewerContent({ id, mode }: { id: string; mode: "modal
   const signedIn = Boolean(shell.viewer);
   const [flags, relationship] = await Promise.all([
     signedIn
-      ? callSocial<Record<string, { liked?: boolean; bookmarked?: boolean; following?: boolean }>>("viewer_clip_flags", { ids: [id] })
+      ? callSocial<Record<string, { liked?: boolean; bookmarked?: boolean; following?: boolean; muted?: boolean; restricted?: boolean }>>("viewer_clip_flags", { ids: [id] })
       : Promise.resolve(null),
     signedIn && !clip.isOwn ? callSocial<{ blocked?: boolean }>("profile_relationship", { target: clip.userId }) : Promise.resolve(null),
   ]);
@@ -55,6 +55,8 @@ export async function ClipViewerContent({ id, mode }: { id: string; mode: "modal
       liked={Boolean(flags?.ok && flags.data?.[id]?.liked)}
       saved={Boolean(flags?.ok && flags.data?.[id]?.bookmarked)}
       following={Boolean(flags?.ok && flags.data?.[id]?.following)}
+      muted={Boolean(flags?.ok && flags.data?.[id]?.muted)}
+      restricted={Boolean(flags?.ok && flags.data?.[id]?.restricted)}
       blocked={Boolean(relationship?.ok && relationship.data?.blocked)}
       moments={moments}
       mode={mode}

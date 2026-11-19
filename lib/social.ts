@@ -5,6 +5,8 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 export function socialError(error: { message?: string } | null) {
   const message = error?.message ?? "";
   if (message.includes("self follow")) return { status: 409, error: "You cannot follow yourself." };
+  if (message.includes("self action")) return { status: 409, error: "You cannot do that to yourself." };
+  if (message.includes("invalid control") || message.includes("invalid kind")) return { status: 400, error: "Invalid request." };
   if (message.includes("invalid comment")) return { status: 400, error: "Comment must be 1–500 characters." };
   if (message.includes("edit window")) return { status: 403, error: "The 15-minute edit window has closed." };
   if (message.includes("invalid clip")) return { status: 400, error: "Check the clip details and try again." };
