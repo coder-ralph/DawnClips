@@ -67,7 +67,7 @@ export default function PrivacyPage() {
       <ul>
         <li>Videos (MP4) and optional cover images you upload, with their titles, descriptions, hero tags and timestamped moments.</li>
         <li>Comments and replies you write.</li>
-        <li>Your likes, saved clips, follows, blocks, and reports you file.</li>
+        <li>Your likes, saved clips, follows, blocks, mutes, restrictions, and reports you file.</li>
       </ul>
       <h3>Viewing activity</h3>
       <p>
@@ -154,7 +154,7 @@ export default function PrivacyPage() {
         </li>
         <li>
           <strong>Deleting your account</strong> (Settings, then Delete account, then type DELETE) removes your videos and cover images, your clips
-          and everything attached to them, your own likes, comments, saves, follows, blocks and notifications, reports you filed, your settings,
+          and everything attached to them, your own likes, comments, saves, follows, blocks, mutes, restrictions and notifications, reports you filed, your settings,
           your profile and your Clerk sign-in account. Watch-time records from your own viewing are kept without a link to you.
         </li>
         <li>Providers may keep backups or logs for a limited time under their own policies.</li>

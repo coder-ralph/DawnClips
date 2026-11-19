@@ -27,6 +27,9 @@ export type FeedClip = {
   liked?: boolean;
   bookmarked?: boolean;
   following?: boolean;
+  /** The viewer muted / restricted this clip's author. */
+  muted?: boolean;
+  restricted?: boolean;
   isOwn?: boolean;
   /** Timestamp tags ("Savage" at 0:21). Filled for list views by hydrateClips. */
   moments?: ClipMoment[];

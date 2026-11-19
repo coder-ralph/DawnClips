@@ -19,7 +19,7 @@ export function ProfileGameInfo({
     <dl className="mt-3 space-y-2 text-sm">
       {rank ? (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <dt className="text-muted">Peak rank</dt>
+          <dt className="text-muted">Peak rank:</dt>
           <dd className="flex items-center gap-2">
             <RankBadge rank={rank} />
             {rankStars !== null ? <span className="tabular-nums text-muted">· {formatStars(rankStars)}</span> : null}
@@ -28,7 +28,7 @@ export function ProfileGameInfo({
       ) : null}
       {roles ? (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <dt className="text-muted">Main roles</dt>
+          <dt className="text-muted">Main roles:</dt>
           <dd className="font-medium">{roles}</dd>
         </div>
       ) : null}

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { PublicProfileSection } from "@/components/settings/public-profile-section";
+import { RelationshipLinks } from "@/components/settings/relationship-links";
 import { SecuritySection } from "@/components/settings/security-section";
 import { Suspense } from "react";
 import { DeleteAccount } from "@/components/settings/delete-account";
@@ -36,6 +37,7 @@ async function SettingsContent() {
             email={user?.primaryEmailAddress?.emailAddress ?? null}
             verified={user?.primaryEmailAddress?.verification?.status === "verified"}
           />
+          <RelationshipLinks />
           <SettingsForms profileId={sync.profile.id} language={normalizeLanguage(sync.profile.language)} />
         </>
       ) : (

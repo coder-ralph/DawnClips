@@ -32,6 +32,8 @@ export function ClipViewer({
   liked,
   saved: initialSaved,
   following,
+  muted,
+  restricted,
   blocked,
   moments,
   mode,
@@ -43,6 +45,8 @@ export function ClipViewer({
   liked: boolean;
   saved: boolean;
   following: boolean;
+  muted: boolean;
+  restricted: boolean;
   blocked: boolean;
   moments: ClipMoment[];
   mode: "modal" | "page";
@@ -173,6 +177,9 @@ export function ClipViewer({
               isOwn={clip.isOwn}
               commentsMode={clip.commentsMode}
               blocked={blocked}
+              following={following}
+              muted={muted}
+              restricted={restricted}
               saved={saved}
               pinned={pinned}
               onSavedChange={setSaved}

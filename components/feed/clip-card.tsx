@@ -156,6 +156,9 @@ export function ClipCard({
               }}
               isOwn={Boolean(clip.isOwn)}
               commentsMode={clip.commentsMode}
+              following={Boolean(clip.following)}
+              muted={Boolean(clip.muted)}
+              restricted={Boolean(clip.restricted)}
               saved={saved}
               pinned={pinned}
               onSavedChange={changeSaved}

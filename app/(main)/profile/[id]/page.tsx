@@ -1,3 +1,4 @@
+import { auth } from "@clerk/nextjs/server";
 import { Film, Lock, MessageCircle, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -6,9 +7,9 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { ClipList } from "@/components/feed/clip-list";
 import { FeedSkeleton } from "@/components/feed/clip-skeleton";
+import { PeopleList } from "@/components/profile/people-list";
 import { ProfileTabs, profileTab, type ProfileTab } from "@/components/profile/profile-tabs";
 import { ProfileView } from "@/components/profile/profile-view";
-import { UserRow } from "@/components/profile/user-row";
 import { buttonClasses } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageContainer } from "@/components/ui/page-container";
@@ -16,7 +17,9 @@ import { OpenUploadButton } from "@/components/upload/open-upload-button";
 import { siteConfig } from "@/config/site";
 import { listProfileFeed } from "@/lib/clips";
 import { normalizeLanguage, translate } from "@/lib/i18n";
+import { fetchProfilePeople } from "@/lib/people";
 import { getPublicProfile } from "@/lib/profile";
+import { parseRelationship } from "@/lib/relationships";
 import { callSocial } from "@/lib/social";
 import { formatRelativeTime } from "@/lib/video";
 
@@ -86,18 +89,20 @@ async function ProfileContent({
   const isHidden = hidden.includes(tab);
   const isClipTab = tab === "highlights" || tab === "liked";
 
-  const [relationship, activity, clips] = await Promise.all([
-    callSocial<{ following?: boolean }>("profile_relationship", { target: profile.id }),
-    isClipTab || isHidden ? Promise.resolve(null) : callSocial<ActivityRow[]>("profile_activity", { target: profile.id, tab, page_limit: 24 }),
+  const peopleTab = tab === "followers" || tab === "following";
+  const [relationship, activity, people, clips, session] = await Promise.all([
+    callSocial<Record<string, unknown>>("profile_relationship", { target: profile.id }),
+    isClipTab || isHidden || peopleTab ? Promise.resolve(null) : callSocial<ActivityRow[]>("profile_activity", { target: profile.id, tab, page_limit: 24 }),
+    peopleTab && !isHidden ? fetchProfilePeople(profile.id, tab, null) : Promise.resolve(null),
     isClipTab && !isHidden ? listProfileFeed(profile.id, tab, 24) : Promise.resolve(null),
+    auth(),
   ]);
   const language = normalizeLanguage((await cookies()).get("dawnclips-language")?.value);
   const rows = activity?.ok ? activity.data ?? [] : [];
-  const peopleTab = tab === "followers" || tab === "following";
 
   return (
     <>
-      <ProfileView profile={profile} following={Boolean(relationship.ok && relationship.data?.following)} />
+      <ProfileView profile={profile} relationship={parseRelationship(relationship.ok ? relationship.data : null)} />
       <ProfileTabs username={profile.username} active={tab} language={language} hidden={hidden} />
 
       <div role="region" aria-label={translate(language, tab)}>
@@ -110,7 +115,7 @@ async function ProfileContent({
 
         {isHidden ? <EmptyState icon={Lock} title={translate(language, "privateTab")} /> : null}
 
-        {!isHidden && ((clips && !clips.ok) || (activity && !activity.ok)) ? (
+        {!isHidden && ((clips && !clips.ok) || (activity && !activity.ok) || (people && !people.ok)) ? (
           <EmptyState icon={Users} title="Could not load this tab" body="Try again in a moment." />
         ) : null}
 
@@ -152,16 +157,32 @@ async function ProfileContent({
           </ul>
         ) : null}
 
-        {!isHidden && peopleTab && rows.length > 0 ? (
-          <ul className="divide-y">
-            {rows.map((row) =>
-              row.username ? (
-                <li key={row.id ?? row.username}>
-                  <UserRow username={row.username} displayName={row.display_name ?? row.username} avatarUrl={row.avatar_url} />
-                </li>
-              ) : null,
-            )}
-          </ul>
+        {!isHidden && people?.ok && people.page.people.length === 0 ? (
+          <EmptyState
+            icon={Users}
+            title={tab === "followers" ? "No followers yet" : "Not following anyone yet"}
+            body={
+              profile.isOwn
+                ? tab === "followers"
+                  ? "When people follow you, they will show up here."
+                  : "Follow creators to see their clips in your Following feed."
+                : tab === "followers"
+                  ? `Nobody follows @${profile.username} yet.`
+                  : `@${profile.username} isn't following anyone yet.`
+            }
+          />
+        ) : null}
+
+        {!isHidden && people?.ok && people.page.people.length > 0 && (tab === "followers" || tab === "following") ? (
+          // The key starts a fresh list (and page cursor) when switching between followers and following.
+          <PeopleList
+            key={`${profile.id}:${tab}`}
+            profileId={profile.id}
+            kind={tab}
+            initial={people.page}
+            canFollow={session.isAuthenticated}
+            isOwnList={profile.isOwn}
+          />
         ) : null}
       </div>
     </>

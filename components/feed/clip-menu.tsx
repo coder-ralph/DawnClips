@@ -17,6 +17,7 @@ import {
   Tags,
   Trash2,
   Undo2,
+  UserMinus,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -24,9 +25,9 @@ import { EditClipDialog, type ClipPatch } from "@/components/clip/edit-clip-dial
 import { EmbedDialog } from "@/components/clip/embed-dialog";
 import { InsightsDialog } from "@/components/clip/insights-dialog";
 import { ReportDialog } from "@/components/feed/report-clip";
+import { BlockDialog } from "@/components/social/relationship-dialogs";
+import { muteRestrictItems, useRelationshipActions } from "@/components/social/relationship-actions";
 import { ActionMenu, type MenuItem } from "@/components/ui/action-menu";
-import { Button } from "@/components/ui/button";
-import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { CommentSettingsDialog, DeleteClipDialog, type CommentsMode } from "@/components/video/clip-owner-controls";
 import { apiErrorMessage } from "@/lib/api-client";
@@ -49,13 +50,18 @@ export type MenuClip = {
 /**
  * The "⋯" menu on a clip. Everyone: copy link, embed code, save. Creators also
  * get Insights, Edit (15 minutes), Pin to profile, moments, comment settings
- * and delete. Other viewers get report and block.
+ * and delete. Other viewers get mute, restrict, unfollow (when they follow the author), report and block. What the
+ * author is to the viewer (followed, muted, restricted, blocked) comes from the shared relationship store, so the menu
+ * never offers an action that contradicts the current state and every card by the same author agrees.
  */
 export function ClipMenu({
   clip,
   isOwn,
   commentsMode = "everyone",
   blocked = false,
+  following = false,
+  muted = false,
+  restricted = false,
   saved = false,
   pinned = false,
   onSavedChange,
@@ -67,6 +73,10 @@ export function ClipMenu({
   isOwn: boolean;
   commentsMode?: CommentsMode;
   blocked?: boolean;
+  /** The viewer's state with the author as rendered by the server; later changes come from the shared store. */
+  following?: boolean;
+  muted?: boolean;
+  restricted?: boolean;
   saved?: boolean;
   pinned?: boolean;
   onSavedChange?: (saved: boolean) => void;
@@ -80,8 +90,8 @@ export function ClipMenu({
   const toast = useToast();
   const { isSignedIn } = useAuth();
   const [dialog, setDialog] = useState<Dialogs>(null);
-  const [isBlocked, setIsBlocked] = useState(blocked);
-  const [pending, setPending] = useState(false);
+  const actions = useRelationshipActions({ id: authorId, username }, { following, muted, restricted, blocked });
+  const { relationship } = actions;
   const now = useNow(clip.editableUntil, Boolean(isSignedIn && isOwn));
   const windowLeft = now === null ? null : editWindowMs(clip.editableUntil, now);
   const canEdit = Boolean(isOwn && clip.editableUntil && (windowLeft === null ? true : windowLeft > 0));
@@ -135,30 +145,6 @@ export function ClipMenu({
     }
   }
 
-  async function toggleBlock() {
-    setPending(true);
-    const next = !isBlocked;
-    try {
-      const response = await fetch(`/api/profiles/${authorId}/block`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ desired: next }),
-      });
-      if (!response.ok) {
-        toast(await apiErrorMessage(response, "Could not update the block."), "error");
-        return;
-      }
-      setIsBlocked(next);
-      toast(next ? `Blocked @${username}` : `Unblocked @${username}`);
-      close();
-      router.refresh();
-    } catch {
-      toast("Could not update the block. Check your connection.", "error");
-    } finally {
-      setPending(false);
-    }
-  }
-
   const items: MenuItem[] = [];
   if (isSignedIn && isOwn) {
     items.push(
@@ -192,12 +178,19 @@ export function ClipMenu({
       { label: "Delete clip", icon: Trash2, danger: true, separatorBefore: true, onSelect: () => setDialog("delete") },
     );
   } else if (isSignedIn) {
+    // Blocked is the strongest state: nothing else is offered next to Unblock (the database ended any follow, mute and restrict).
+    if (!relationship.blocked) {
+      items.push(...muteRestrictItems(username, relationship, actions, true));
+      if (relationship.following) {
+        items.push({ label: `Unfollow @${username}`, icon: UserMinus, onSelect: () => void actions.unfollow() });
+      }
+    }
     items.push(
       { label: "Report clip", icon: Flag, danger: true, separatorBefore: true, onSelect: () => setDialog("report") },
       {
-        label: isBlocked ? `Unblock @${username}` : `Block @${username}`,
-        icon: isBlocked ? Undo2 : Ban,
-        danger: !isBlocked,
+        label: relationship.blocked ? `Unblock @${username}` : `Block @${username}`,
+        icon: relationship.blocked ? Undo2 : Ban,
+        danger: !relationship.blocked,
         onSelect: () => setDialog("block"),
       },
     );
@@ -235,23 +228,12 @@ export function ClipMenu({
         />
       ) : null}
       {dialog === "block" ? (
-        <Dialog
-          open
+        <BlockDialog
+          username={username}
+          blocked={relationship.blocked}
+          pending={actions.blocking}
           onClose={close}
-          title={isBlocked ? `Unblock @${username}?` : `Block @${username}?`}
-          description={
-            isBlocked
-              ? "You will be able to see each other's clips again."
-              : "You will no longer see each other's clips, and neither of you can follow the other."
-          }
-          footer={
-            <>
-              <Button variant="ghost" onClick={close}>Cancel</Button>
-              <Button variant={isBlocked ? "primary" : "dangerSolid"} loading={pending} onClick={() => void toggleBlock()}>
-                {isBlocked ? "Unblock" : "Block"}
-              </Button>
-            </>
-          }
+          onConfirm={() => void actions.setBlocked(!relationship.blocked).then((changed) => changed && close())}
         />
       ) : null}
     </>
