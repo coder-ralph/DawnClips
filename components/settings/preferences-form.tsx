@@ -13,6 +13,7 @@ type Settings = {
   theme: "light" | "dark" | "system";
   language: Language;
   showHighlights: boolean;
+  showPosts: boolean;
   showFollowing: boolean;
   showFollowers: boolean;
   showComments: boolean;
@@ -80,6 +81,7 @@ export function PreferencesForm({ settings }: { settings: Settings }) {
       <Section title={t("privacy")} description="Choose what other people can see on your profile.">
         <div className="divide-y">
           <Switch name="showHighlights" label="Highlights" description="Your published clips." defaultChecked={settings.showHighlights} />
+          <Switch name="showPosts" label="Posts" description="Your photo posts." defaultChecked={settings.showPosts} />
           <Switch name="showFollowing" label="Following list" defaultChecked={settings.showFollowing} />
           <Switch name="showFollowers" label="Follower list" defaultChecked={settings.showFollowers} />
           <Switch name="showComments" label="Comments" defaultChecked={settings.showComments} />

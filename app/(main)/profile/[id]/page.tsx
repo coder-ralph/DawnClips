@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { Film, Lock, MessageCircle, Users } from "lucide-react";
+import { Film, Images, Lock, MessageCircle, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
@@ -81,13 +81,14 @@ async function ProfileContent({
 
   const hidden = [
     !profile.showHighlights && !profile.isOwn ? "highlights" : null,
+    !profile.showPosts && !profile.isOwn ? "posts" : null,
     !profile.showLikes && !profile.isOwn ? "liked" : null,
     !profile.showComments && !profile.isOwn ? "comments" : null,
     !profile.showFollowing && !profile.isOwn ? "following" : null,
     !profile.showFollowers && !profile.isOwn ? "followers" : null,
   ].filter(Boolean) as ProfileTab[];
   const isHidden = hidden.includes(tab);
-  const isClipTab = tab === "highlights" || tab === "liked";
+  const isClipTab = tab === "highlights" || tab === "posts" || tab === "liked";
 
   const peopleTab = tab === "followers" || tab === "following";
   const [relationship, activity, people, clips, session] = await Promise.all([
@@ -125,12 +126,12 @@ async function ProfileContent({
             clips={clips.clips}
             empty={
               <EmptyState
-                icon={Film}
-                title={tab === "highlights" ? "No highlights yet" : "No liked clips yet"}
+                icon={tab === "posts" ? Images : Film}
+                title={tab === "highlights" ? "No highlights yet" : tab === "posts" ? "No photo posts yet" : "No liked clips yet"}
                 body={translate(language, "noResults")}
                 action={
-                  tab === "highlights" && profile.isOwn ? (
-                    <OpenUploadButton className={buttonClasses()}>Upload your first clip</OpenUploadButton>
+                  (tab === "highlights" || tab === "posts") && profile.isOwn ? (
+                    <OpenUploadButton className={buttonClasses()}>{tab === "posts" ? "Post your first photos" : "Upload your first clip"}</OpenUploadButton>
                   ) : undefined
                 }
               />
@@ -148,9 +149,9 @@ async function ProfileContent({
               <li key={row.id}>
                 <Link href={`/clip/${row.clip_id}#comments`} className="block px-4 py-3 transition-colors hover:bg-hover md:px-5">
                   <span className="block truncate text-xs text-muted">
-                    On {row.title} · {row.created_at ? <time dateTime={row.created_at} suppressHydrationWarning>{formatRelativeTime(row.created_at)}</time> : null}
+                    On {row.title || "a photo post"} · {row.created_at ? <time dateTime={row.created_at} suppressHydrationWarning>{formatRelativeTime(row.created_at)}</time> : null}
                   </span>
-                  <span className="mt-1 block whitespace-pre-wrap break-words text-[15px] leading-6">{row.content}</span>
+                  <span className="mt-1 block whitespace-pre-wrap break-words text-[15px] leading-6">{row.content || "Photo"}</span>
                 </Link>
               </li>
             ))}

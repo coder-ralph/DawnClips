@@ -36,6 +36,7 @@ export function ProfileStats({ profile, relationship }: { profile: PublicProfile
         <Stat href={`${base}?tab=followers`} label={followers === 1 ? "follower" : "followers"} value={followers} />
         <Stat href={`${base}?tab=following`} label="following" value={followingCount} />
         <Stat href={base} label={profile.clipsCount === 1 ? "highlight" : "highlights"} value={profile.clipsCount} />
+        <Stat href={`${base}?tab=posts`} label={profile.postsCount === 1 ? "post" : "posts"} value={profile.postsCount} />
       </p>
       <div className={cn("mt-4 grid gap-2", showMenu ? "grid-cols-[1fr_1fr_auto]" : "grid-cols-2")}>
         {profile.isOwn ? (

@@ -5,7 +5,7 @@ import { maxClipBytes } from "@/lib/video";
 export const clipVisibility = z.enum(["public", "unlisted", "private"]);
 export const feedName = z.enum(["foryou", "following", "trending", "latest"]);
 
-const heroTags = z
+export const heroTags = z
   .array(z.string())
   .max(5, "Add up to 5 tags.")
   .refine((tags) => new Set(tags).size === tags.length, "Tags must be unique.")

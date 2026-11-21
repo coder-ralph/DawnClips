@@ -1,6 +1,6 @@
 "use client";
 
-import { Play } from "lucide-react";
+import { Images, Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
@@ -17,11 +17,12 @@ const fresh = (source: Source | undefined): source is Source =>
  * shortly before the thumbnail scrolls into view and shows the first frame of the video, so clips
  * uploaded without a poster still get a real preview instead of a black box.
  */
-export function ClipThumb({ src, clipId, className }: { src?: string | null; clipId?: string; className?: string }) {
+export function ClipThumb({ src, clipId, className, photo = false }: { src?: string | null; clipId?: string; className?: string; photo?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const [source, setSource] = useState<Source | null>(null);
   const [failed, setFailed] = useState(false);
-  const needsFetch = !src && Boolean(clipId);
+  // A photo post has no video to fetch a frame from: it shows its cover, or a photo placeholder.
+  const needsFetch = !photo && !src && Boolean(clipId);
 
   useEffect(() => {
     const node = ref.current;
@@ -77,7 +78,7 @@ export function ClipThumb({ src, clipId, className }: { src?: string | null; cli
         />
       ) : (
         <span className="flex h-full w-full items-center justify-center text-muted">
-          <Play aria-hidden="true" className="h-7 w-7" />
+          {photo ? <Images aria-hidden="true" className="h-7 w-7" /> : <Play aria-hidden="true" className="h-7 w-7" />}
         </span>
       )}
       {/* A small play mark over a video frame signals that the tile opens a clip. */}

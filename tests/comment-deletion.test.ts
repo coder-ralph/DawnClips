@@ -80,7 +80,15 @@ test("comment deletion goes through the authorised database function and never t
   assert.match(route, /isAuthenticated\) return Response\.json\(\{ error: "Unauthorized" \}, \{ status: 401 \}\)/);
   assert.match(route, /uuid\(\)\.safeParse\(id\)/);
   assert.match(route, /callSocial<[^>]*>\("delete_comment", \{ target: id \}\)/);
-  assert.doesNotMatch(route, /r2|deleteObject|from\("comments"\)/);
+  // Images attached to the thread are deleted from R2 first, owner by owner, and a failure keeps the thread.
+  assert.match(route, /rpc\("comment_tree_ids", \{ target: id \}\)/);
+  assert.match(route, /commentImagesOf\(admin, tree\.data as string\[\]\)/);
+  assert.match(route, /deleteMediaEntries\(images\.entries\)/);
+  assert.ok(route.indexOf("deleteMediaEntries(images.entries)") < route.indexOf('callSocial<{ deleted: boolean; comments_count: number; removed_ids: string[] }>("delete_comment"'));
+  assert.match(route, /failed\.length > 0\) return Response\.json\(\{ error: "Could not delete that comment\. Try again\." \}, \{ status: 502 \}\)/);
+  // Never a raw key or a direct delete: the keys are derived inside lib/media-cleanup.ts, and the comment row is only
+  // read here (the delete itself is the database function).
+  assert.doesNotMatch(route, /deleteObject\(|\.delete\(\)|r2_object_key/);
   // Nothing in the app writes comments directly: the table is only changed by the security-definer functions.
   assert.match(read("supabase/schema.sql"), /revoke insert, update, delete on public\.comments from anon, authenticated/);
 });

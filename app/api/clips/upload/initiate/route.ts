@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { auth } from "@clerk/nextjs/server";
+import { sweepStalePhotoPosts } from "@/lib/media-cleanup";
 import { ensureCurrentProfile } from "@/lib/profile";
 import { createUploadUrl, deleteObject, r2Configured } from "@/lib/r2";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
@@ -42,6 +43,7 @@ export async function POST(request: Request) {
     .from("clips")
     .select("id, r2_object_key, thumbnail_object_key")
     .eq("user_id", profile.profile.id)
+    .eq("kind", "video")
     .in("status", ["pending", "processing"])
     .lt("created_at", cutoff);
   for (const clip of stale.data ?? []) {
@@ -49,6 +51,9 @@ export async function POST(request: Request) {
     for (const key of own) await deleteObject(key, profile.profile.id);
     await admin.from("clips").update({ status: "failed" }).eq("id", clip.id).eq("user_id", profile.profile.id);
   }
+
+  // Abandoned photo posts are swept the same way (their images are deleted), so they never count toward the limit below.
+  await sweepStalePhotoPosts(admin, profile.profile.id);
 
   const pending = await supabase
     .from("clips")

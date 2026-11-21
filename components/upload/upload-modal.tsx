@@ -12,7 +12,7 @@ import { useToast } from "@/components/ui/toast";
 import { HeroCombobox } from "@/components/upload/hero-combobox";
 import { CLIP_TEXT_MAX, splitClipText } from "@/lib/clip-text";
 import { optimizeForStreaming } from "@/lib/mp4-faststart";
-import { CLIP_PUBLISHED_EVENT, OPEN_UPLOAD_EVENT } from "@/lib/ui-events";
+import { CLIP_PUBLISHED_EVENT, OPEN_CLIP_COMPOSER_EVENT } from "@/lib/ui-events";
 import { cn } from "@/lib/utils";
 import { isMp4Signature, maxClipBytes } from "@/lib/video";
 
@@ -67,7 +67,7 @@ async function capturePoster(source: File) {
 /**
  * Threads-style composer for new clips. One text box (first line becomes the
  * title, the rest the description), an MP4 attachment, hero tags and a
- * visibility menu. Opened from anywhere with `openUploadModal()`.
+ * visibility menu. Opened from the publish chooser ("Post a Clip"), which `openUploadModal()` shows.
  */
 export function UploadModal({
   configured,
@@ -103,8 +103,8 @@ export function UploadModal({
 
   useEffect(() => {
     const onOpen = () => setOpen(true);
-    window.addEventListener(OPEN_UPLOAD_EVENT, onOpen);
-    return () => window.removeEventListener(OPEN_UPLOAD_EVENT, onOpen);
+    window.addEventListener(OPEN_CLIP_COMPOSER_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_CLIP_COMPOSER_EVENT, onOpen);
   }, []);
 
   useEffect(() => {

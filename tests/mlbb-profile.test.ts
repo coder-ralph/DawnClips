@@ -198,8 +198,8 @@ test("the public profile shows rank and roles only when set", () => {
   assert.match(info, /if \(!rank && !roles\) return null;/);
   assert.match(info, /\{rank \? \(/);
   assert.match(info, /\{roles \? \(/);
-  assert.match(info, /<dt className="text-muted">Peak rank<\/dt>/);
-  assert.match(info, /<dt className="text-muted">Main roles<\/dt>/);
+  assert.match(info, /<dt className="text-muted">Peak rank:<\/dt>/);
+  assert.match(info, /<dt className="text-muted">Main roles:<\/dt>/);
   assert.match(info, /<RankBadge rank=\{rank\} \/>/);
   assert.match(info, /rankStars !== null \? /);
   // Loaded from the database for both the public and the own profile.

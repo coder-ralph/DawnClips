@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ClipPatch } from "@/components/clip/edit-clip-dialog";
 import { MomentsPanel } from "@/components/clip/moments-panel";
 import { HeroChips } from "@/components/feed/clip-card";
+import { PostMedia } from "@/components/post/post-media";
 import { ClipMenu } from "@/components/feed/clip-menu";
 import { BookmarkButton } from "@/components/social/bookmark-button";
 import { FollowButton } from "@/components/social/follow-button";
@@ -56,6 +57,7 @@ export function ClipViewer({
   related?: React.ReactNode;
 }) {
   const router = useRouter();
+  const photo = clip.kind === "photo";
   const searchParams = useSearchParams();
   const requestedStartAt = Number(searchParams.get("t"));
   const startAt =
@@ -109,9 +111,9 @@ export function ClipViewer({
   }, []);
 
   return (
-    <div role="dialog" aria-modal="true" aria-label={`${text.title} by ${clip.displayName}`} className="fixed inset-0 z-50 flex flex-col bg-black landscape-short:flex-row lg:flex-row">
+    <div role="dialog" aria-modal="true" aria-label={`${text.title || (photo ? "Photo post" : "Clip")} by ${clip.displayName}`} className="fixed inset-0 z-50 flex flex-col bg-black landscape-short:flex-row lg:flex-row">
       <div className="relative h-[40dvh] min-h-0 shrink-0 bg-black landscape-short:h-auto landscape-short:min-w-0 landscape-short:flex-1 lg:h-auto lg:flex-1">
-        <button ref={closeRef} type="button" onClick={close} aria-label="Close video" title="Close video" className={cn(roundButton, "absolute left-3 top-3 z-10")}>
+        <button ref={closeRef} type="button" onClick={close} aria-label={photo ? "Close post" : "Close video"} title={photo ? "Close post" : "Close video"} className={cn(roundButton, "absolute left-3 top-3 z-10")}>
           <X aria-hidden="true" className="h-5 w-5" />
         </button>
         <button
@@ -123,17 +125,21 @@ export function ClipViewer({
         >
           {panelOpen ? <ChevronRight aria-hidden="true" className="h-5 w-5" /> : <ChevronLeft aria-hidden="true" className="h-5 w-5" />}
         </button>
-        <VideoPlayer
-          clipId={clip.id}
-          title={text.title}
-          active
-          autoplay={clip.visibility === "public" || clip.isOwn}
-          poster={clip.thumbnailUrl}
-          source={playback}
-          controllerRef={controller}
-          variant="viewer"
-          startAt={startAt}
-        />
+        {photo ? (
+          <PostMedia postId={clip.id} initial={clip.media ?? []} title={text.title} />
+        ) : (
+          <VideoPlayer
+            clipId={clip.id}
+            title={text.title}
+            active
+            autoplay={clip.visibility === "public" || clip.isOwn}
+            poster={clip.thumbnailUrl}
+            source={playback}
+            controllerRef={controller}
+            variant="viewer"
+            startAt={startAt}
+          />
+        )}
       </div>
 
       <aside
@@ -173,6 +179,7 @@ export function ClipViewer({
                 heroTags: text.heroTags,
                 visibility: clip.visibility,
                 editableUntil: clip.editableUntil,
+                kind: clip.kind,
               }}
               isOwn={clip.isOwn}
               commentsMode={clip.commentsMode}
@@ -194,7 +201,7 @@ export function ClipViewer({
               <Pin aria-hidden="true" className="h-3 w-3" /> Pinned to the profile
             </p>
           ) : null}
-          <h1 className="mt-3 text-[17px] font-bold leading-6">{text.title}</h1>
+          <h1 className={text.title ? "mt-3 text-[17px] font-bold leading-6" : "sr-only"}>{text.title || "Photo post"}</h1>
           {clip.visibility !== "public" ? (
             <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-card px-2.5 py-1 text-xs font-medium capitalize text-muted">
               <Lock aria-hidden="true" className="h-3 w-3" />
@@ -204,7 +211,7 @@ export function ClipViewer({
           {text.description ? <p className="mt-1.5 whitespace-pre-wrap break-words text-[15px] leading-6">{text.description}</p> : null}
           <HeroChips tags={text.heroTags} />
 
-          <MomentsPanel clipId={clip.id} initial={moments} isOwn={clip.isOwn} controller={controller} />
+          {photo ? null : <MomentsPanel clipId={clip.id} initial={moments} isOwn={clip.isOwn} controller={controller} />}
 
           <div className="mt-3 flex items-center border-b pb-2">
             <div className="-ml-2.5 flex items-center">
@@ -220,7 +227,7 @@ export function ClipViewer({
               </button>
               <ShareButton path={`/clip/${clip.id}`} compact />
             </div>
-            <span className="ml-auto text-xs tabular-nums text-muted">{formatCount(clip.viewsCount)} views</span>
+            {photo ? <span className="ml-auto" /> : <span className="ml-auto text-xs tabular-nums text-muted">{formatCount(clip.viewsCount)} views</span>}
             <BookmarkButton clipId={clip.id} saved={saved} onSavedChange={setSaved} className="-mr-2.5 ml-1" />
           </div>
         </div>

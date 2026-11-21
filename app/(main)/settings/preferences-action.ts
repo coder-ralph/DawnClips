@@ -14,6 +14,7 @@ export async function updatePreferences(_state: { status: string; message?: stri
     theme: formData.get("theme"),
     language: formData.get("language"),
     showHighlights: formData.get("showHighlights") ?? "off",
+    showPosts: formData.get("showPosts") ?? "off",
     showFollowing: formData.get("showFollowing") ?? "off",
     showFollowers: formData.get("showFollowers") ?? "off",
     showComments: formData.get("showComments") ?? "off",
@@ -37,6 +38,7 @@ export async function updatePreferences(_state: { status: string; message?: stri
   const updated = await supabase.from("profile_settings").update({
     theme: input.theme,
     show_highlights: flagValue(input.showHighlights),
+    show_posts: flagValue(input.showPosts),
     show_following: flagValue(input.showFollowing),
     show_followers: flagValue(input.showFollowers),
     show_comments: flagValue(input.showComments),
