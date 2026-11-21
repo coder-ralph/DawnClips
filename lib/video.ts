@@ -1,3 +1,5 @@
+import { isOwnedMediaKey } from "@/lib/media";
+
 const objectKeyPattern =
   /^clips\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.(mp4|jpg)$/;
 
@@ -11,9 +13,15 @@ export function hasClipObjectKeyShape(key: string) {
   return objectKeyPattern.test(key);
 }
 
+/**
+ * True when `key` is one of this profile's own objects: a clip (`clips/<profile>/<clip>.mp4|jpg`), a photo-post image or
+ * a comment image (lib/media.ts). Every shape is strict and carries the owner's profile id, so a key under another
+ * profile, or any other path, is never owned.
+ */
 export function isOwnedObjectKey(key: string, profileId: string) {
   const match = objectKeyPattern.exec(key);
-  return Boolean(match && match[1] === profileId);
+  if (match) return match[1] === profileId;
+  return isOwnedMediaKey(key, profileId);
 }
 
 export function clipObjectKey(profileId: string, clipId: string, ext: "mp4" | "jpg") {

@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageCircle, Pin } from "lucide-react";
+import { Images, MessageCircle, Pin } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -13,6 +13,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { ProfileHoverLink } from "@/components/social/profile-hover-card";
 import { ShareButton } from "@/components/ui/share-button";
 import { VideoPlayer, type PlayerController } from "@/components/video/video-player";
+import { carouselRatio } from "@/lib/carousel";
 import { tagLabel } from "@/lib/heroes";
 import { getCachedPlayback, warmVideo } from "@/lib/playback-cache";
 import { formatCount, formatRelativeTime } from "@/lib/video";
@@ -33,6 +34,38 @@ export function HeroChips({ tags }: { tags: string[] }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * A photo post in a list: its first image at the image's own proportions (never cropped to a shared shape), with a
+ * badge that shows it holds several photos. Opening it shows the carousel in the post viewer.
+ */
+function PhotoPreview({ clip, title }: { clip: FeedClip; title: string }) {
+  const cover = clip.cover;
+  return (
+    <Link
+      href={`/clip/${clip.id}`}
+      aria-label={`Open ${title || "photo post"}${clip.mediaCount > 1 ? `, ${clip.mediaCount} photos` : ""}`}
+      className="relative block w-full overflow-hidden rounded-xl bg-card"
+      style={{ aspectRatio: String(cover ? carouselRatio(cover.width, cover.height) : 1), maxHeight: "min(80dvh, 720px)" }}
+    >
+      {cover ? (
+        // Signed R2 URLs are per viewer and expire, so next/image optimisation does not apply.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={cover.url} alt="" width={cover.width} height={cover.height} loading="lazy" decoding="async" className="h-full w-full object-contain" />
+      ) : (
+        <span className="flex h-full w-full items-center justify-center text-muted">
+          <Images aria-hidden="true" className="h-8 w-8" />
+        </span>
+      )}
+      {clip.mediaCount > 1 ? (
+        <span className="absolute right-2.5 top-2.5 inline-flex items-center gap-1 rounded-full bg-black/65 px-2.5 py-1 text-xs font-medium tabular-nums text-white" data-testid="carousel-indicator">
+          <Images aria-hidden="true" className="h-3.5 w-3.5" />
+          1/{clip.mediaCount}
+        </span>
+      ) : null}
+    </Link>
   );
 }
 
@@ -104,6 +137,7 @@ export function ClipCard({
     if (active) router.prefetch(`/clip/${clip.id}`);
   }, [active, clip.id, router]);
 
+  const photo = clip.kind === "photo";
   const openViewer = useCallback(
     (currentTime: number) => {
       const timestamp = Number.isFinite(currentTime)
@@ -153,6 +187,7 @@ export function ClipCard({
                 heroTags: text.heroTags,
                 visibility: clip.visibility,
                 editableUntil: clip.editableUntil,
+                kind: clip.kind,
               }}
               isOwn={Boolean(clip.isOwn)}
               commentsMode={clip.commentsMode}
@@ -167,26 +202,30 @@ export function ClipCard({
               onDeleted={onRemoved ? () => onRemoved(clip.id) : undefined}
             />
           </div>
-          <h2 id={`clip-${clip.id}-title`} className="mt-0.5 text-[15px] font-medium leading-6">
-            <Link href={`/clip/${clip.id}`}>{text.title}</Link>
+          <h2 id={`clip-${clip.id}-title`} className={text.title ? "mt-0.5 text-[15px] font-medium leading-6" : "sr-only"}>
+            <Link href={`/clip/${clip.id}`}>{text.title || "Photo post"}</Link>
           </h2>
           {text.description ? <p className="line-clamp-2 whitespace-pre-line text-sm leading-6 text-muted">{text.description}</p> : null}
           <HeroChips tags={text.heroTags} />
-          <MomentChips moments={clip.moments} controller={controller} onJump={() => onVisible(clip.id)} />
+          {photo ? null : <MomentChips moments={clip.moments} controller={controller} onJump={() => onVisible(clip.id)} />}
         </div>
 
         <div ref={playerRef} className="col-span-2 mt-3 sm:col-span-1 sm:col-start-2">
-          <VideoPlayer
-            clipId={clip.id}
-            title={text.title}
-            active={active}
-            autoplay
-            poster={clip.thumbnailUrl}
-            source={videoSource}
-            controllerRef={controller}
-            onPlay={() => onVisible(clip.id)}
-            onOpen={openViewer}
-          />
+          {photo ? (
+            <PhotoPreview clip={clip} title={text.title} />
+          ) : (
+            <VideoPlayer
+              clipId={clip.id}
+              title={text.title}
+              active={active}
+              autoplay
+              poster={clip.thumbnailUrl}
+              source={videoSource}
+              controllerRef={controller}
+              onPlay={() => onVisible(clip.id)}
+              onOpen={openViewer}
+            />
+          )}
         </div>
 
         <div className="col-span-2 mt-1.5 flex items-center sm:col-span-1 sm:col-start-2">
@@ -203,7 +242,7 @@ export function ClipCard({
             </Link>
             <ShareButton path={`/clip/${clip.id}`} compact />
           </div>
-          <span className="ml-auto text-xs tabular-nums text-muted">{formatCount(clip.viewsCount)} views</span>
+          {photo ? <span className="ml-auto" /> : <span className="ml-auto text-xs tabular-nums text-muted">{formatCount(clip.viewsCount)} views</span>}
           <BookmarkButton clipId={clip.id} saved={saved} onSavedChange={changeSaved} className="-mr-2.5 ml-1" />
         </div>
       </div>

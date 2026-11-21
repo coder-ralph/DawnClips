@@ -18,16 +18,20 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   // Hashtags read as noise in a preview, so they are dropped from the description.
   const summary = clip.description.replace(/(^|\s)#[\p{L}\p{N}_]+/gu, " ").replace(/\s+/g, " ").trim();
   // What Facebook, Messenger, X and Discord show under the title: the caption, or a line built from the clip's facts.
+  const photo = clip.kind === "photo";
   const description = summary
     ? shorten(summary, 200)
-    : `Watch ${clip.displayName}'s MLBB highlight${heroes.length ? ` featuring ${heroes.join(", ")}` : ""} on DawnClips.`;
-  const title = shorten(clip.title, 90);
+    : photo
+      ? `See ${clip.displayName}'s MLBB photos${heroes.length ? ` featuring ${heroes.join(", ")}` : ""} on DawnClips.`
+      : `Watch ${clip.displayName}'s MLBB highlight${heroes.length ? ` featuring ${heroes.join(", ")}` : ""} on DawnClips.`;
+  const heading = clip.title || (photo ? `Photo post by ${clip.displayName}` : clip.title);
+  const title = shorten(heading, 90);
   return {
-    title: clip.title,
+    title: heading,
     description,
     alternates: { canonical: url },
     openGraph: {
-      type: "video.other",
+      type: photo ? "article" : "video.other",
       siteName: siteConfig.name,
       title,
       description,

@@ -74,11 +74,14 @@ export function DeleteClipDialog({
   onClose,
   clipId,
   onDeleted,
+  photo = false,
 }: {
   open: boolean;
   onClose: () => void;
   clipId: string;
   onDeleted: () => void;
+  /** A photo post: the wording says photos instead of a video. */
+  photo?: boolean;
 }) {
   const toast = useToast();
   const [pending, setPending] = useState(false);
@@ -91,7 +94,7 @@ export function DeleteClipDialog({
         toast(await apiErrorMessage(response, "Could not delete the clip."), "error");
         return;
       }
-      toast("Clip deleted");
+      toast(photo ? "Post deleted" : "Clip deleted");
       onClose();
       onDeleted();
     } catch {
@@ -105,11 +108,15 @@ export function DeleteClipDialog({
     <Dialog
       open={open}
       onClose={onClose}
-      title="Delete this clip?"
-      description="The video, its likes and its comments are removed. This cannot be undone."
+      title={photo ? "Delete this post?" : "Delete this clip?"}
+      description={
+        photo
+          ? "The photos, their likes and the comments (with any images in them) are removed. This cannot be undone."
+          : "The video, its likes and its comments are removed. This cannot be undone."
+      }
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Keep clip</Button>
+          <Button variant="ghost" onClick={onClose}>{photo ? "Keep post" : "Keep clip"}</Button>
           <Button variant="dangerSolid" loading={pending} onClick={() => void remove()}>Delete</Button>
         </>
       }

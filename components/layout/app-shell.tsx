@@ -8,6 +8,8 @@ import { SidebarNavFallback } from "@/components/layout/nav-fallbacks";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
 import { ThemeSync } from "@/components/theme/theme-sync";
 import { OpenUploadButton } from "@/components/upload/open-upload-button";
+import { PhotoComposer } from "@/components/upload/photo-composer";
+import { PublishChooser } from "@/components/upload/publish-chooser";
 import { UploadModal } from "@/components/upload/upload-modal";
 import { r2Configured } from "@/lib/r2";
 import { buttonClasses } from "@/components/ui/button";
@@ -46,11 +48,14 @@ async function MobileNavIsland() {
 async function UploadHost() {
   const data = await getShellData();
   if (data.status !== "ready" || !data.viewer) return null;
+  const viewer = { name: data.viewer.displayName, username: data.viewer.username, avatarUrl: data.viewer.avatarUrl };
+  const configured = r2Configured();
   return (
-    <UploadModal
-      configured={r2Configured()}
-      viewer={{ name: data.viewer.displayName, username: data.viewer.username, avatarUrl: data.viewer.avatarUrl }}
-    />
+    <>
+      <PublishChooser />
+      <UploadModal configured={configured} viewer={viewer} />
+      <PhotoComposer configured={configured} viewer={viewer} />
+    </>
   );
 }
 

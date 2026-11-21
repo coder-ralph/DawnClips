@@ -1,6 +1,8 @@
 import "server-only";
 import { clerkClient } from "@clerk/nextjs/server";
 import { canEraseRecords, remainingObjectKeys } from "@/lib/deletion-plan";
+import { commentImageKey, postMediaKeys } from "@/lib/media";
+import { commentImagesOnClip, deleteMediaEntries, type MediaEntry } from "@/lib/media-cleanup";
 import { deleteObjects, r2Configured } from "@/lib/r2";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { isOwnedObjectKey, splitClipKeys } from "@/lib/video";
@@ -52,15 +54,48 @@ export async function deleteAccount(clerkUserId: string) {
     if (foreign.length > 0) console.error(`Account deletion: ignored ${foreign.length} stored object key(s) of clip ${clip.id} that do not belong to it.`);
     return own;
   });
-  const keys = [...new Set([...(job.r2_object_keys ?? []), ...foundKeys])].filter((key) => isOwnedObjectKey(key, profileId));
+
+  // Photo-post images (keys derived from this account, the post id and each image id) and every comment image this
+  // account uploaded, on any clip and whether or not it was ever posted.
+  const clipRows = clips.data ?? [];
+  const photoIds = clipRows.map((clip) => clip.id as string);
+  const postMedia = photoIds.length > 0 ? await admin.from("post_media").select("id, post_id, mime_type").in("post_id", photoIds) : { data: [], error: null };
+  const ownComment = await admin.from("comment_media").select("id, mime_type").eq("owner_id", profileId);
+  if (postMedia.error || ownComment.error) {
+    await admin.from("account_deletions").update({ status: "failed", last_error: "Could not list the photos." }).eq("id", job.id);
+    return { ok: false as const, error: "Could not list your photos. Nothing was removed.", retryable: true };
+  }
+  const mediaKeys: string[] = [];
+  const postsById = new Map<string, Array<{ id: string; mimeType: string }>>();
+  for (const row of postMedia.data ?? []) {
+    postsById.set(row.post_id as string, [...(postsById.get(row.post_id as string) ?? []), { id: row.id as string, mimeType: row.mime_type as string }]);
+  }
+  for (const [postId, images] of postsById) mediaKeys.push(...postMediaKeys(profileId, postId, images).keys.map((item) => item.key));
+  for (const row of ownComment.data ?? []) {
+    const key = commentImageKey(profileId, row.id, row.mime_type);
+    if (key) mediaKeys.push(key);
+  }
+  const keys = [...new Set([...(job.r2_object_keys ?? []), ...foundKeys, ...mediaKeys])].filter((key) => isOwnedObjectKey(key, profileId));
   await admin.from("account_deletions").update({
     status: "deleting_objects",
     r2_object_keys: keys,
     attempts: (job.attempts ?? 0) + 1,
   }).eq("id", job.id);
 
+  // Images other people attached to comments on this account's clips go when the clips (and those comments) do. They are
+  // looked up again on every attempt and deleted under their own owners, so a retry never loses track of them.
+  const foreignImages: MediaEntry[] = [];
+  for (const clipId of photoIds) {
+    const found = await commentImagesOnClip(admin, clipId);
+    if (!found.ok) {
+      await admin.from("account_deletions").update({ status: "failed", last_error: "Could not list the comment images." }).eq("id", job.id);
+      return { ok: false as const, error: "Could not list the comment images. Nothing was removed.", retryable: true };
+    }
+    foreignImages.push(...found.entries.filter((entry) => entry.ownerId !== profileId));
+  }
+
   const pending = remainingObjectKeys(keys, job.r2_deleted_keys ?? []);
-  if (pending.length > 0 && !r2Configured()) {
+  if ((pending.length > 0 || foreignImages.length > 0) && !r2Configured()) {
     await admin.from("account_deletions").update({
       status: "failed",
       r2_failed_keys: pending,
@@ -69,7 +104,8 @@ export async function deleteAccount(clerkUserId: string) {
     return { ok: false as const, error: "Video storage is not configured. The account was not deleted.", retryable: true };
   }
 
-  const removed = pending.length > 0 ? await deleteObjects(pending, profile.data.id) : { deleted: [], failed: [] };
+  const removed = pending.length > 0 ? await deleteObjects(pending, profile.data.id) : { deleted: [], failed: [] as string[] };
+  if (foreignImages.length > 0) removed.failed.push(...(await deleteMediaEntries(foreignImages)).failed);
   const actuallyDeleted = [...new Set([...(job.r2_deleted_keys ?? []), ...removed.deleted])];
   const failed = removed.failed;
   if (!canEraseRecords(failed)) {

@@ -62,7 +62,14 @@ test("the composer keeps the send button and the emoji picker inside the comment
   assert.match(form, /event\.preventDefault\(\)/);
   assert.match(source, /insertAtCursor\(value, node\?\.selectionStart/);
   assert.match(source, /setSelectionRange\(caret\.current, caret\.current\)/);
-  assert.doesNotMatch(source, /<img|next\/image|https?:\/\//);
+  assert.doesNotMatch(source, /next\/image|https?:\/\//);
+  // The only image is the local preview of the photo being attached (an object URL), never a remote URL.
+  assert.equal((source.match(/<img/g) ?? []).length, 1);
+  assert.match(source, /<img src=\{attachment\.previewUrl\}/);
+  // The photo button sits in the same row, before the emoji button, and only accepts JPEG, PNG and WebP.
+  assert.match(form, /aria-label="Add photo"/);
+  assert.match(form, /accept="image\/jpeg,image\/png,image\/webp"/);
+  assert.ok(form.indexOf('aria-label="Add photo"') < form.indexOf('aria-label="Insert emoji"'));
 });
 
 test("the comment section uses the composer for comments and replies", () => {

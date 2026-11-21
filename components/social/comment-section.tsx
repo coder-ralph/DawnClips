@@ -1,21 +1,23 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { Flag, Heart, MessageCircle, Pencil, Trash2 } from "lucide-react";
+import { Flag, Heart, ImageOff, MessageCircle, Pencil, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { ReportDialog } from "@/components/feed/report-clip";
 import { ProfileHoverLink } from "@/components/social/profile-hover-card";
-import { CommentComposer } from "@/components/social/comment-composer";
+import { CommentComposer, type CommentAttachment } from "@/components/social/comment-composer";
 import { Avatar } from "@/components/ui/avatar";
 import { Button, buttonClasses } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { inputClass } from "@/components/ui/field";
+import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { commentLikeLabel } from "@/lib/a11y-labels";
 import { apiErrorMessage } from "@/lib/api-client";
 import { withLike, withLikeDefaults, withLikeState } from "@/lib/comment-likes";
+import { commentImagePrepare, prepareImage } from "@/lib/image-prepare";
 import { removeSubtree, restoreComments, subtreeIds, visibleComments } from "@/lib/comment-tree";
 import { cn } from "@/lib/utils";
 import { formatCount, formatRelativeTime } from "@/lib/video";
@@ -32,7 +34,11 @@ type Comment = {
   username: string;
   display_name: string;
   avatar_url?: string | null;
+  /** The image attached to the comment, signed for this viewer (the R2 bucket is private). */
+  media?: { id: string; width: number; height: number; url: string } | null;
 };
+
+type Attachment = CommentAttachment & { token: number; mediaId?: string; width: number; height: number; error?: string };
 
 export type CommentViewer = { username: string; displayName: string; avatarUrl: string | null };
 
@@ -64,6 +70,13 @@ export function CommentSection({
   const [pending, setPending] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const tempCounter = useRef(0);
+  // The image being attached to each composer ("new" for the main box, "reply-<id>" for a reply), and the large view.
+  const [attachments, setAttachments] = useState<Record<string, Attachment>>({});
+  const [attachmentErrors, setAttachmentErrors] = useState<Record<string, string>>({});
+  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
+  const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
+  const attachmentsRef = useRef(attachments);
+  const attachmentToken = useRef(0);
   const countIdBase = useId();
   const [popped, setPopped] = useState<string | null>(null);
   // Comments whose like request is still running, so a second click cannot send a second request.
@@ -89,9 +102,86 @@ export function CommentSection({
     };
   }, [clipId, reloadKey]);
 
-  async function submit(parentId: string | null, text: string) {
+  useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
+
+  useEffect(() => {
+    return () => {
+      for (const item of Object.values(attachmentsRef.current)) URL.revokeObjectURL(item.previewUrl);
+    };
+  }, []);
+
+  function setAttachmentError(key: string, message: string) {
+    setAttachmentErrors((current) => {
+      const next = { ...current };
+      if (message) next[key] = message;
+      else delete next[key];
+      return next;
+    });
+  }
+
+  function dropAttachment(key: string, { deleteUpload }: { deleteUpload: boolean }) {
+    const item = attachmentsRef.current[key];
+    if (!item) return;
+    URL.revokeObjectURL(item.previewUrl);
+    setAttachments((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    // An image that was uploaded but not posted is deleted from storage; the server also sweeps any that are left.
+    if (deleteUpload && item.mediaId) void fetch(`/api/comments/media/${item.mediaId}`, { method: "DELETE" }).catch(() => undefined);
+  }
+
+  async function pickImage(key: string, file: File) {
+    setAttachmentError(key, "");
+    const prepared = await prepareImage(file, commentImagePrepare);
+    if (!prepared.ok) {
+      setAttachmentError(key, prepared.error);
+      return;
+    }
+    const token = ++attachmentToken.current;
+    const { image } = prepared;
+    const previewUrl = URL.createObjectURL(image.file);
+    const base = { token, previewUrl, width: image.width, height: image.height };
+    setAttachments((current) => ({ ...current, [key]: { ...base, state: "uploading" } }));
+    const stillWanted = () => attachmentsRef.current[key]?.token === token;
+    let mediaId: string | undefined;
+    try {
+      const started = await fetch("/api/comments/media/initiate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mimeType: image.mime, size: image.file.size, width: image.width, height: image.height }),
+      });
+      if (!started.ok) throw new Error(await apiErrorMessage(started, "Could not upload the photo."));
+      const body = (await started.json()) as { mediaId: string; uploadUrl: string; headers: Record<string, string> };
+      mediaId = body.mediaId;
+      if (!stillWanted()) {
+        void fetch(`/api/comments/media/${mediaId}`, { method: "DELETE" }).catch(() => undefined);
+        return;
+      }
+      setAttachments((current) => (current[key]?.token === token ? { ...current, [key]: { ...current[key], mediaId } } : current));
+      const sent = await fetch(body.uploadUrl, { method: "PUT", headers: body.headers, body: image.file });
+      if (!sent.ok) throw new Error("Could not upload the photo.");
+      setAttachments((current) => (current[key]?.token === token ? { ...current, [key]: { ...current[key], state: "ready" } } : current));
+    } catch (caught) {
+      if (!stillWanted()) return;
+      if (mediaId) void fetch(`/api/comments/media/${mediaId}`, { method: "DELETE" }).catch(() => undefined);
+      setAttachments((current) => (current[key]?.token === token ? { ...current, [key]: { ...current[key], state: "failed", mediaId: undefined } } : current));
+      setAttachmentError(key, caught instanceof Error ? caught.message : "Could not upload the photo.");
+    }
+  }
+
+  function removeImage(key: string) {
+    setAttachmentError(key, "");
+    dropAttachment(key, { deleteUpload: true });
+  }
+
+  async function submit(parentId: string | null, text: string, key: string) {
     const trimmed = text.trim();
-    if (!trimmed || pending) return;
+    const attached = attachments[key]?.state === "ready" ? attachments[key] : null;
+    if ((!trimmed && !attached) || pending) return;
     tempCounter.current += 1;
     const tempId = `temp-${tempCounter.current}`;
     const optimistic: Comment = {
@@ -106,6 +196,7 @@ export function CommentSection({
       username: viewer?.username ?? "",
       display_name: viewer?.displayName ?? "You",
       avatar_url: viewer?.avatarUrl ?? null,
+      media: attached?.mediaId ? { id: attached.mediaId, width: attached.width, height: attached.height, url: attached.previewUrl } : null,
     };
     setComments((current) => [...current, optimistic]);
     setCount((value) => value + 1);
@@ -114,17 +205,29 @@ export function CommentSection({
       const response = await fetch(`/api/clips/${clipId}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: trimmed, parentId }),
+        body: JSON.stringify({ content: trimmed, parentId, ...(attached?.mediaId ? { mediaId: attached.mediaId } : {}) }),
       });
       if (!response.ok) {
         setComments((current) => current.filter((item) => item.id !== tempId));
         setCount((value) => Math.max(0, value - 1));
+        // The server deletes the image when a comment cannot be posted (unless it only needs another try), so the
+        // person adds it again; the text stays in the box.
+        if (attached && ![409, 429, 500, 502, 503].includes(response.status)) dropAttachment(key, { deleteUpload: false });
         toast(await apiErrorMessage(response, "Could not post the comment."), "error");
         return;
       }
-      const saved = (await response.json()) as { id: string; content: string; parent_id: string | null; created_at: string; comments_count: number };
-      setComments((current) => current.map((item) => (item.id === tempId ? { ...optimistic, ...saved, is_own: true, deleted: false } : item)));
+      const saved = (await response.json()) as {
+        id: string;
+        content: string;
+        parent_id: string | null;
+        created_at: string;
+        comments_count: number;
+        media?: Comment["media"];
+      };
+      setComments((current) => current.map((item) => (item.id === tempId ? { ...optimistic, ...saved, media: saved.media ?? null, is_own: true, deleted: false } : item)));
       setCount(saved.comments_count);
+      // The image is now part of the comment (shown from its signed URL), so the local preview is let go.
+      dropAttachment(key, { deleteUpload: false });
       if (parentId) {
         setReplyText("");
         setReplyTo(null);
@@ -132,6 +235,7 @@ export function CommentSection({
         setContent("");
       }
     } catch {
+      // Nothing is known about whether the server saw the request, so the image is kept for another try.
       setComments((current) => current.filter((item) => item.id !== tempId));
       setCount((value) => Math.max(0, value - 1));
       toast("Could not post the comment. Check your connection.", "error");
@@ -265,7 +369,35 @@ export function CommentSection({
                 </div>
               </form>
             ) : (
-              <p className="mt-0.5 whitespace-pre-wrap break-words text-[15px] leading-6">{comment.content}</p>
+              <>
+                {comment.content ? <p className="mt-0.5 whitespace-pre-wrap break-words text-[15px] leading-6">{comment.content}</p> : null}
+                {comment.media ? (
+                  brokenImages[comment.media.id] ? (
+                    <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-xl bg-card px-3 py-2 text-xs text-muted">
+                      <ImageOff aria-hidden="true" className="h-4 w-4" /> This photo is not available.
+                    </p>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setLightbox({ src: comment.media!.url, alt: `Photo from ${comment.display_name}` })}
+                      aria-label={`View photo from ${comment.display_name}`}
+                      className="mt-1.5 block max-w-full overflow-hidden rounded-xl border bg-card focus-visible:outline-2 focus-visible:outline-accent-text"
+                    >
+                      {/* Signed R2 URLs are per viewer and expire, so next/image optimisation does not apply. */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={comment.media.url}
+                        alt={`Photo from ${comment.display_name}`}
+                        width={comment.media.width}
+                        height={comment.media.height}
+                        loading="lazy"
+                        onError={() => setBrokenImages((current) => ({ ...current, [comment.media!.id]: true }))}
+                        className="block h-auto max-h-72 w-auto max-w-full object-contain"
+                      />
+                    </button>
+                  )
+                ) : null}
+              </>
             )}
             {canAct && editing !== comment.id ? (
               <div className="-ml-2 mt-0.5 flex flex-wrap items-center text-xs">
@@ -285,7 +417,7 @@ export function CommentSection({
                   {comment.likes_count > 0 ? <span id={`${countIdBase}-${comment.id}`}>{formatCount(comment.likes_count)}</span> : null}
                 </button>
                 {isSignedIn && depth < MAX_DEPTH ? (
-                  <button type="button" onClick={() => { setReplyTo(replyTo === comment.id ? null : comment.id); setReplyText(""); }} className="action-btn">
+                  <button type="button" onClick={() => { dropAttachment(`reply-${replyTo ?? ""}`, { deleteUpload: true }); setReplyTo(replyTo === comment.id ? null : comment.id); setReplyText(""); }} className="action-btn">
                     <MessageCircle aria-hidden="true" className="h-4 w-4" /> Reply
                   </button>
                 ) : null}
@@ -313,12 +445,20 @@ export function CommentSection({
                   placeholder={`Reply to ${comment.display_name}…`}
                   value={replyText}
                   onChange={setReplyText}
-                  onSubmit={() => void submit(comment.id, replyText)}
+                  onSubmit={() => void submit(comment.id, replyText, `reply-${comment.id}`)}
                   pending={pending}
                   maxLength={MAX_LENGTH}
                   submitLabel="Post reply"
                   autoFocus
-                  onCancel={() => setReplyTo(null)}
+                  onCancel={() => {
+                    dropAttachment(`reply-${comment.id}`, { deleteUpload: true });
+                    setAttachmentError(`reply-${comment.id}`, "");
+                    setReplyTo(null);
+                  }}
+                  attachment={attachments[`reply-${comment.id}`] ?? null}
+                  attachmentError={attachmentErrors[`reply-${comment.id}`]}
+                  onPickImage={(file) => void pickImage(`reply-${comment.id}`, file)}
+                  onRemoveImage={() => removeImage(`reply-${comment.id}`)}
                 />
               </div>
             ) : null}
@@ -347,10 +487,14 @@ export function CommentSection({
               placeholder="Add a comment…"
               value={content}
               onChange={setContent}
-              onSubmit={() => void submit(null, content)}
+              onSubmit={() => void submit(null, content, "new")}
               pending={pending}
               maxLength={MAX_LENGTH}
               submitLabel="Post comment"
+              attachment={attachments.new ?? null}
+              attachmentError={attachmentErrors.new}
+              onPickImage={(file) => void pickImage("new", file)}
+              onRemoveImage={() => removeImage("new")}
             />
           </div>
         </div>
@@ -399,6 +543,7 @@ export function CommentSection({
           </>
         }
       />
+      {lightbox ? <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} /> : null}
       {reporting ? <ReportDialog open onClose={() => setReporting(null)} targetId={reporting} targetType="comment" /> : null}
     </section>
   );

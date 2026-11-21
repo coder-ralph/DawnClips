@@ -1,4 +1,4 @@
-import { Eye, Lock } from "lucide-react";
+import { Eye, Images, Lock } from "lucide-react";
 import Link from "next/link";
 import { ClipThumb } from "@/components/feed/clip-thumb";
 import { Avatar } from "@/components/ui/avatar";
@@ -14,7 +14,24 @@ export type ClipSummary = {
   avatarUrl?: string | null;
   createdAt?: string;
   visibility?: string;
+  /** "photo" for a photo post; anything else is a video. */
+  kind?: string;
+  mediaCount?: number;
 };
+
+const clipTitle = (clip: ClipSummary) => clip.title || (clip.kind === "photo" ? "Photo post" : "");
+
+/** Marks a photo post in a grid or list: it opens a carousel, not a video. */
+function PhotoBadge({ clip }: { clip: ClipSummary }) {
+  if (clip.kind !== "photo") return null;
+  return (
+    <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[11px] font-medium tabular-nums text-white">
+      <Images aria-hidden="true" className="h-3 w-3" />
+      {(clip.mediaCount ?? 0) > 1 ? clip.mediaCount : <span className="sr-only">Photo post</span>}
+      {(clip.mediaCount ?? 0) > 1 ? <span className="sr-only"> photos</span> : null}
+    </span>
+  );
+}
 
 function VisibilityBadge({ visibility }: { visibility?: string }) {
   if (!visibility || visibility === "public") return null;
@@ -31,9 +48,10 @@ export function ClipTile({ clip }: { clip: ClipSummary }) {
   return (
     <Link href={`/clip/${clip.id}`} className="group block rounded-xl">
       <div className="relative overflow-hidden rounded-xl">
-        <ClipThumb src={clip.thumbnailUrl} clipId={clip.id} className="transition-transform duration-200 group-hover:scale-[1.03]" />
+        <ClipThumb src={clip.thumbnailUrl} clipId={clip.id} photo={clip.kind === "photo"} className="transition-transform duration-200 group-hover:scale-[1.03]" />
         <VisibilityBadge visibility={clip.visibility} />
-        {typeof clip.viewsCount === "number" ? (
+        <PhotoBadge clip={clip} />
+        {typeof clip.viewsCount === "number" && clip.kind !== "photo" ? (
           <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[11px] font-medium tabular-nums text-white">
             <Eye aria-hidden="true" className="h-3 w-3" />
             {formatCount(clip.viewsCount)}
@@ -41,7 +59,7 @@ export function ClipTile({ clip }: { clip: ClipSummary }) {
           </span>
         ) : null}
       </div>
-      <p className="mt-2 line-clamp-2 text-sm font-medium leading-5">{clip.title}</p>
+      <p className="mt-2 line-clamp-2 text-sm font-medium leading-5">{clipTitle(clip)}</p>
       {clip.username || clip.createdAt ? (
         <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted">
           {clip.username ? <Avatar src={clip.avatarUrl} name={clip.displayName ?? clip.username} size={16} /> : null}
@@ -73,15 +91,16 @@ export function ClipRow({ clip, replace = false }: { clip: ClipSummary; replace?
   return (
     <Link href={`/clip/${clip.id}`} replace={replace} className="group flex gap-3 px-4 py-3 transition-colors hover:bg-hover md:px-5">
       <div className="relative w-36 shrink-0 overflow-hidden rounded-lg sm:w-44">
-        <ClipThumb src={clip.thumbnailUrl} clipId={clip.id} />
+        <ClipThumb src={clip.thumbnailUrl} clipId={clip.id} photo={clip.kind === "photo"} />
         <VisibilityBadge visibility={clip.visibility} />
+        <PhotoBadge clip={clip} />
       </div>
       <div className="min-w-0 flex-1 py-0.5">
-        <p className="line-clamp-2 text-sm font-semibold leading-5">{clip.title}</p>
+        <p className="line-clamp-2 text-sm font-semibold leading-5">{clipTitle(clip)}</p>
         <p className="mt-1 truncate text-xs text-muted">
           {clip.username ? `@${clip.username}` : null}
-          {clip.username && typeof clip.viewsCount === "number" ? " · " : null}
-          {typeof clip.viewsCount === "number" ? `${formatCount(clip.viewsCount)} views` : null}
+          {clip.username && typeof clip.viewsCount === "number" && clip.kind !== "photo" ? " · " : null}
+          {typeof clip.viewsCount === "number" && clip.kind !== "photo" ? `${formatCount(clip.viewsCount)} views` : null}
         </p>
         {clip.createdAt ? (
           <p className="mt-0.5 text-xs text-muted">

@@ -45,6 +45,8 @@ export type MenuClip = {
   heroTags: string[];
   visibility?: "public" | "unlisted" | "private";
   editableUntil?: string | null;
+  /** A photo post has no embed, insights, edit, pin or moments; its menu keeps copy link, save, comments, delete and report. */
+  kind?: "video" | "photo";
 };
 
 /**
@@ -85,6 +87,7 @@ export function ClipMenu({
   onDeleted?: () => void;
 }) {
   const { id: clipId, userId: authorId, username } = clip;
+  const photo = clip.kind === "photo";
   const isPublic = (clip.visibility ?? "public") === "public";
   const router = useRouter();
   const toast = useToast();
@@ -146,7 +149,7 @@ export function ClipMenu({
   }
 
   const items: MenuItem[] = [];
-  if (isSignedIn && isOwn) {
+  if (isSignedIn && isOwn && !photo) {
     items.push(
       { label: "Insights", icon: BarChart3, onSelect: () => setDialog("insights") },
       {
@@ -159,7 +162,7 @@ export function ClipMenu({
     );
   }
   items.push({ label: "Copy link", icon: Link2, separatorBefore: items.length > 0, onSelect: () => void copyLink() });
-  if (isPublic) items.push({ label: "Get embed code", icon: Code2, onSelect: () => setDialog("embed") });
+  if (isPublic && !photo) items.push({ label: "Get embed code", icon: Code2, onSelect: () => setDialog("embed") });
   if (isSignedIn) {
     items.push({
       label: saved ? "Unsave" : "Save",
@@ -169,13 +172,13 @@ export function ClipMenu({
     });
   }
   if (isSignedIn && isOwn) {
-    if (isPublic) {
+    if (isPublic && !photo) {
       items.push({ label: pinned ? "Unpin from profile" : "Pin to profile", icon: pinned ? PinOff : Pin, onSelect: () => void togglePinned() });
     }
+    if (!photo) items.push({ label: "Tag moments", icon: Tags, href: `/clip/${clipId}#moments` });
     items.push(
-      { label: "Tag moments", icon: Tags, href: `/clip/${clipId}#moments` },
       { label: "Comment settings", icon: MessageSquareOff, onSelect: () => setDialog("comments") },
-      { label: "Delete clip", icon: Trash2, danger: true, separatorBefore: true, onSelect: () => setDialog("delete") },
+      { label: photo ? "Delete post" : "Delete clip", icon: Trash2, danger: true, separatorBefore: true, onSelect: () => setDialog("delete") },
     );
   } else if (isSignedIn) {
     // Blocked is the strongest state: nothing else is offered next to Unblock (the database ended any follow, mute and restrict).
@@ -186,7 +189,7 @@ export function ClipMenu({
       }
     }
     items.push(
-      { label: "Report clip", icon: Flag, danger: true, separatorBefore: true, onSelect: () => setDialog("report") },
+      { label: photo ? "Report post" : "Report clip", icon: Flag, danger: true, separatorBefore: true, onSelect: () => setDialog("report") },
       {
         label: relationship.blocked ? `Unblock @${username}` : `Block @${username}`,
         icon: relationship.blocked ? Undo2 : Ban,
@@ -199,7 +202,7 @@ export function ClipMenu({
   return (
     <>
       <ActionMenu
-        label="More video options"
+        label={photo ? "More post options" : "More video options"}
         items={items}
         buttonClassName="-mr-2 flex h-9 w-9 items-center justify-center rounded-full text-muted hover:bg-hover hover:text-foreground"
       >
@@ -208,7 +211,7 @@ export function ClipMenu({
       {dialog === "report" ? <ReportDialog open onClose={close} targetId={clipId} targetType="clip" /> : null}
       {dialog === "comments" ? <CommentSettingsDialog open onClose={close} clipId={clipId} initialMode={commentsMode} /> : null}
       {dialog === "delete" ? (
-        <DeleteClipDialog open onClose={close} clipId={clipId} onDeleted={onDeleted ?? (() => router.replace("/"))} />
+        <DeleteClipDialog open onClose={close} clipId={clipId} photo={photo} onDeleted={onDeleted ?? (() => router.replace("/"))} />
       ) : null}
       {dialog === "embed" ? <EmbedDialog open onClose={close} clipId={clipId} title={clip.title} /> : null}
       {dialog === "insights" ? <InsightsDialog open onClose={close} clipId={clipId} title={clip.title} /> : null}

@@ -6,6 +6,7 @@ export const preferencesSchema = z.object({
   theme: z.enum(["light", "dark", "system"]),
   language: z.enum(["en", "tl", "id"]),
   showHighlights: flag,
+  showPosts: flag,
   showFollowing: flag,
   showFollowers: flag,
   showComments: flag,

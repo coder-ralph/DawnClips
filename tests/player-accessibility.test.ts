@@ -56,9 +56,9 @@ test("the save button is a toggle with one stable name and aria-pressed", () => 
 });
 
 test("the viewer's close button and the clip menu are named for the video", () => {
-  assert.match(strip(read("components/clip/clip-viewer.tsx")), /aria-label="Close video" title="Close video"/);
+  assert.match(strip(read("components/clip/clip-viewer.tsx")), /aria-label=\{photo \? "Close post" : "Close video"\} title=\{photo \? "Close post" : "Close video"\}/);
   const menu = strip(read("components/feed/clip-menu.tsx"));
-  assert.match(menu, /label="More video options"/);
+  assert.match(menu, /label=\{photo \? "More post options" : "More video options"\}/);
   // ActionMenu already exposes aria-haspopup and aria-expanded for it.
   const actionMenu = strip(read("components/ui/action-menu.tsx"));
   assert.match(actionMenu, /aria-haspopup="menu"/);

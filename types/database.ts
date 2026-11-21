@@ -36,11 +36,16 @@ export type PublicProfile = {
   createdAt: string;
   isOwn: boolean;
   showHighlights: boolean;
+  /** Photo posts (the Posts tab). Videos follow showHighlights. */
+  showPosts: boolean;
   showFollowing: boolean;
   showFollowers: boolean;
   showComments: boolean;
   showLikes: boolean;
+  /** Published videos. */
   clipsCount: number | null;
+  /** Published public photo posts. */
+  postsCount: number | null;
   followersCount: number | null;
   followingCount: number | null;
 };

@@ -2,7 +2,7 @@ import { LinkTabs } from "@/components/ui/tabs";
 import { translate, type Language, type MessageKey } from "@/lib/i18n";
 
 /** Tabs shown on a profile. Followers/following are reached from the stats line, not from tabs. */
-const tabs = ["highlights", "liked", "comments"] as const;
+const tabs = ["highlights", "posts", "liked", "comments"] as const;
 export type ProfileTab = (typeof tabs)[number] | "following" | "followers";
 
 export function profileTab(value: string | undefined): ProfileTab {

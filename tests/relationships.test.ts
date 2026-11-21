@@ -111,11 +111,12 @@ async function withDb(t: test.TestContext, run: (db: Db) => Promise<void>) {
   await run(db);
 }
 
-test("schema.sql ends with phase 14 and the phase file is the same text", () => {
+test("schema.sql contains phase 14 as written, and phase 15 comes after it", () => {
   const schema = readFileSync(schemaUrl, "utf8");
   const phase = readFileSync(phase14Url, "utf8");
-  assert.ok(schema.trimEnd().endsWith(phase.trimEnd()), "schema.sql must end with schema-phase14.sql");
+  assert.ok(schema.includes(phase.trimEnd()), "schema.sql must contain schema-phase14.sql");
   assert.ok(schema.indexOf("DawnClips Phase 13") < schema.indexOf("DawnClips Phase 14"));
+  assert.ok(schema.indexOf("DawnClips Phase 14") < schema.indexOf("DawnClips Phase 15"));
 });
 
 test("profile_controls: one row per person and kind, writes only through the function", async (t) => {

@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { isModerator } from "@/lib/deletion-plan";
+import { commentImagesOnClip, deleteMediaEntries, postImageEntries } from "@/lib/media-cleanup";
 import { ensureCurrentProfile } from "@/lib/profile";
 import { deleteObject, r2Configured } from "@/lib/r2";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
@@ -50,7 +51,7 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
   const profile = await ensureCurrentProfile();
   const admin = createAdminSupabaseClient();
   if (!admin) return Response.json({ error: "Database is not configured." }, { status: 503 });
-  const clip = await admin.from("clips").select("id, user_id, r2_object_key, thumbnail_object_key").eq("id", id).maybeSingle();
+  const clip = await admin.from("clips").select("id, user_id, kind, r2_object_key, thumbnail_object_key").eq("id", id).maybeSingle();
   // A failed lookup (for example a missing table grant) is a server problem, not a missing clip.
   if (clip.error) {
     console.error(`Clip delete lookup failed [${clip.error.code ?? "no-code"}] ${clip.error.message ?? ""}`);
@@ -71,7 +72,25 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
     const removed = await deleteObject(key, clip.data.user_id);
     if (!removed.ok) return Response.json({ error: "The video could not be deleted. The clip was kept." }, { status: 502 });
   }
-  // Delete the row. Likes, comments, bookmarks, views, moments and watch events go with it (on delete cascade).
+
+  // A photo post's images (derived from the owner, the post id and each image id) and every image attached to a
+  // comment on this clip, whoever wrote it: the comments go with the clip, so their images must too. Each object is
+  // deleted under its own owner, never under a key read from storage. A failure keeps the clip so nothing is orphaned.
+  const media: Awaited<ReturnType<typeof postImageEntries>>["entries"] = [];
+  if (clip.data.kind === "photo") {
+    const images = await postImageEntries(admin, clip.data.user_id, clip.data.id);
+    if (!images.ok) return Response.json({ error: "The photos could not be deleted. The post was kept." }, { status: 502 });
+    media.push(...images.entries);
+  }
+  const commentImages = await commentImagesOnClip(admin, clip.data.id);
+  if (!commentImages.ok) return Response.json({ error: "The comment images could not be deleted. The clip was kept." }, { status: 502 });
+  media.push(...commentImages.entries);
+  if (media.length > 0) {
+    if (!r2Configured()) return Response.json({ error: "Photo storage is not configured." }, { status: 503 });
+    const { failed } = await deleteMediaEntries(media);
+    if (failed.length > 0) return Response.json({ error: "The photos could not be deleted. The clip was kept." }, { status: 502 });
+  }
+  // Delete the row. Likes, comments, bookmarks, views, moments, watch events, photo-post images and comment images go with it (on delete cascade).
   const deleted = await admin.from("clips").delete().eq("id", id).select("id");
   if (deleted.error) {
     console.error(`Clip delete failed [${deleted.error.code ?? "no-code"}] ${deleted.error.message ?? ""}`);

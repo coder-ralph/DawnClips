@@ -12,13 +12,13 @@ export default async function ClipOpenGraphImage({ params }: { params: Promise<{
   return renderClipCard(
     clip && clip.visibility === "public"
       ? {
-          title: clip.title,
+          title: clip.title || (clip.kind === "photo" ? "Photo post" : clip.title),
           displayName: clip.displayName,
           username: clip.username,
           avatarUrl: clip.avatarUrl,
           thumbnailUrl: clip.thumbnailUrl,
           heroTags: clip.heroTags,
-          duration: clip.duration,
+          duration: clip.kind === "photo" ? null : clip.duration,
           viewsCount: clip.viewsCount,
         }
       : null,

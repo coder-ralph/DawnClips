@@ -88,6 +88,7 @@ async function SettingsForms({ profileId, language }: { profileId: string; langu
             theme: row.theme,
             language,
             showHighlights: row.show_highlights,
+            showPosts: row.show_posts ?? true,
             showFollowing: row.show_following,
             showFollowers: row.show_followers,
             showComments: row.show_comments,

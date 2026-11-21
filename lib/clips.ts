@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { cache } from "react";
 import { buildClipPlayback, type AuthorizedClipRow, type ClipPlayback } from "@/lib/clip-playback";
 import { logDbError } from "@/lib/db-log";
+import { type MediaRow, signPostCover, signPostImages } from "@/lib/post-media";
 import { ensureCurrentProfile } from "@/lib/profile";
 import { publicObjectUrl, r2Configured } from "@/lib/r2";
 import { callSocial } from "@/lib/social";
@@ -36,8 +37,11 @@ function mapFeedClip(row: Record<string, unknown>): FeedClip | null {
   if (typeof row.id !== "string" || typeof row.title !== "string") return null;
   const visibility = row.visibility === "private" || row.visibility === "unlisted" ? row.visibility : "public";
   const userId = String(row.user_id ?? "");
+  const kind = row.kind === "photo" ? "photo" : "video";
   return {
     id: row.id,
+    kind,
+    mediaCount: kind === "photo" ? Number(row.media_count ?? 0) : 0,
     title: row.title,
     description: String(row.description ?? ""),
     heroTags: Array.isArray(row.hero_tags) ? row.hero_tags.filter((tag) => typeof tag === "string") : [],
@@ -50,7 +54,7 @@ function mapFeedClip(row: Record<string, unknown>): FeedClip | null {
     userId,
     // Public clips have a stable public URL derived from the owner and clip ids (the key the uploader wrote), so
     // a card can start loading the video without asking the playback API. Others still go through the API.
-    videoUrl: visibility === "public" && userId ? publicObjectUrl(clipObjectKey(userId, row.id, "mp4")) : null,
+    videoUrl: kind === "video" && visibility === "public" && userId ? publicObjectUrl(clipObjectKey(userId, row.id, "mp4")) : null,
     username: String(row.username ?? ""),
     displayName: String(row.display_name ?? ""),
     avatarUrl: typeof row.avatar_url === "string" ? row.avatar_url : null,
@@ -70,9 +74,21 @@ type ViewerFlags = Record<string, { liked?: boolean; bookmarked?: boolean; follo
  * state (own clip, liked, bookmarked, following, muted, restricted) in one extra lookup.
  */
 export async function hydrateClips(rows: unknown): Promise<FeedClip[]> {
-  const clips = Array.isArray(rows)
-    ? rows.map((row) => mapFeedClip(row as Record<string, unknown>)).filter((row): row is FeedClip => Boolean(row))
+  const mapped = Array.isArray(rows)
+    ? rows.flatMap((row) => {
+        const clip = mapFeedClip(row as Record<string, unknown>);
+        return clip ? [{ clip, raw: row as Record<string, unknown> }] : [];
+      })
     : [];
+  // A photo post's first image is private like every R2 object: it is signed here, for rows the database has already
+  // filtered by what this viewer may see. Only the cover is signed for a list; the viewer signs the rest.
+  const clips = await Promise.all(
+    mapped.map(async ({ clip, raw }) => {
+      if (clip.kind !== "photo") return clip;
+      const cover = await signPostCover(clip.userId, clip.id, raw.cover as MediaRow | null | undefined);
+      return { ...clip, cover, thumbnailUrl: cover?.url ?? null };
+    }),
+  );
   if (clips.length === 0) return clips;
   const profile = await ensureCurrentProfile();
   const mine = profile.status === "ready" ? profile.profile.id : null;
@@ -160,8 +176,12 @@ export const loadClip = cache(async (id: string): Promise<ClipDetail | null> => 
   const clip = mapFeedClip(row);
   if (!clip) return null;
   const profile = await ensureCurrentProfile();
+  const media = clip.kind === "photo" && Array.isArray(row.media) ? await signPostImages(clip.userId, clip.id, row.media as MediaRow[]) : [];
   return {
     ...clip,
+    media,
+    cover: media[0] ?? null,
+    thumbnailUrl: media[0]?.url ?? null,
     visibility: row.visibility === "private" || row.visibility === "unlisted" ? row.visibility : "public",
     status: String(row.status),
     isOwn: profile.status === "ready" && profile.profile.id === clip.userId,
@@ -216,8 +236,8 @@ export async function listSavedClips(limit = 30) {
   return { ok: true as const, clips: clips.map((clip) => ({ ...clip, bookmarked: true })) };
 }
 
-/** Highlights (pinned first) or liked clips for a profile, as full feed rows. */
-export async function listProfileFeed(profileId: string, tab: "highlights" | "liked", limit = 24) {
+/** Highlights (pinned first), photo posts or liked clips for a profile, as full feed rows. */
+export async function listProfileFeed(profileId: string, tab: "highlights" | "posts" | "liked", limit = 24) {
   const result = await callSocial<unknown[]>("profile_clips", { target: profileId, tab, page_limit: limit });
   if (!result.ok) return { ok: false as const, clips: [] as FeedClip[] };
   return { ok: true as const, clips: await hydrateClips(result.data) };
@@ -273,7 +293,7 @@ export async function loadEmbedClip(id: string) {
   const { data, error } = await admin.rpc("authorize_clip_playback", { target: id, clerk_user_id: null });
   if (error || !data || typeof data !== "object") return null;
   const row = data as Record<string, unknown>;
-  if (row.status !== "published" || row.visibility !== "public") return null;
+  if (row.status !== "published" || row.visibility !== "public" || row.kind === "photo") return null;
   const clip = mapFeedClip(row);
   return clip ? { id: clip.id, title: clip.title, username: clip.username, displayName: clip.displayName, thumbnailUrl: clip.thumbnailUrl, videoUrl: clip.videoUrl ?? null } : null;
 }

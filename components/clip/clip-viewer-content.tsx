@@ -63,7 +63,7 @@ export async function ClipViewerContent({ id, mode }: { id: string; mode: "modal
       playback={playback}
       comments={<CommentSection clipId={clip.id} initialCount={clip.commentsCount} viewer={viewer} />}
       related={
-        clip.visibility === "public" ? (
+        clip.visibility === "public" && clip.kind === "video" ? (
           <Suspense fallback={<div className="border-t px-4 py-4"><Skeleton className="h-20 w-full" /></div>}>
             <RelatedClips id={id} />
           </Suspense>

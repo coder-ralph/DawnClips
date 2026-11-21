@@ -61,11 +61,13 @@ function mapPublicProfile(value: unknown): PublicProfile | null {
     createdAt: String(row.created_at ?? ""),
     isOwn: Boolean(row.is_own),
     showHighlights: Boolean(row.show_highlights),
+    showPosts: row.show_posts !== false,
     showFollowing: Boolean(row.show_following),
     showFollowers: Boolean(row.show_followers),
     showComments: Boolean(row.show_comments),
     showLikes: Boolean(row.show_likes),
     clipsCount: typeof row.clips_count === "number" ? row.clips_count : null,
+    postsCount: typeof row.posts_count === "number" ? row.posts_count : null,
     followersCount: typeof row.followers_count === "number" ? row.followers_count : null,
     followingCount: typeof row.following_count === "number" ? row.following_count : null,
   };

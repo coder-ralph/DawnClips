@@ -1,8 +1,19 @@
 export type FeedName = "foryou" | "following" | "trending" | "latest";
 export type ClipVisibility = "public" | "unlisted" | "private";
 
+export type ClipKind = "video" | "photo";
+
+/** One image of a photo post, with a signed (private bucket) URL and its original pixel size. */
+export type PostImage = { id: string; url: string; width: number; height: number };
+
 export type FeedClip = {
   id: string;
+  /** "video" for a highlight clip, "photo" for a photo post. */
+  kind: ClipKind;
+  /** Number of images in a photo post (0 for a video). */
+  mediaCount: number;
+  /** First image of a photo post, signed; also used as thumbnailUrl so every grid and card shows it. */
+  cover?: PostImage | null;
   title: string;
   description: string;
   heroTags: string[];
@@ -46,6 +57,8 @@ export type ClipDetail = FeedClip & {
   status: string;
   isOwn: boolean;
   commentsMode: "everyone" | "followers" | "disabled";
+  /** All images of a photo post, in order, signed. Empty for a video. */
+  media?: PostImage[];
 };
 
 export type ClipMoment = { id: string; at: number; label: string };
